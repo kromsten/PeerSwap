@@ -10,7 +10,7 @@ use cw_storage_plus::Bound;
 use cw_utils::Expiration;
 
 use crate::error::ContractError;
-use crate::state::{State, STATE, OTCS, OTCInfo, UserInfo};
+use crate::state::{State, STATE, OTCS, OTCInfo, UserInfo, AskFor};
 use crate::msg::{InstantiateMsg, QueryMsg, ExecuteMsg, ReceiveMsg, GetOTCsResponse, NewOTCResponse};
 
 // version info for migration info
@@ -75,7 +75,7 @@ pub fn execute(
             env,
             &info.sender,
             Balance::from(info.funds), 
-            msg.ask_balance,    
+            msg.ask_balances,    
             msg.expires,
             msg.user_info,
             msg.description
@@ -118,7 +118,7 @@ pub fn execute_receive(
                 env,
                 &api.addr_validate(&wrapper.sender)?,
                 balance,
-                msg.ask_balance, 
+                msg.ask_balances, 
                 msg.expires,
                 msg.user_info,
                 msg.description
@@ -145,7 +145,7 @@ pub fn try_create_otc(
     env: Env,
     seller: &Addr,
     sell_balance: Balance,
-    ask_balance: Balance,
+    ask_balances: Vec<Balance>,
     expires: Option<Expiration>,
     user_info: Option<UserInfo>,
     description: Option<String>,
@@ -174,9 +174,7 @@ pub fn try_create_otc(
         sell_amount: Uint128::from(0 as u8),
         sell_denom: None,
         sell_address: None,
-        ask_amount: Uint128::from(0 as u8),
-        ask_denom: None,
-        ask_address: None,
+        ask_for: vec![],
         expires,
         user_info,
         description
@@ -206,23 +204,37 @@ pub fn try_create_otc(
         }
     };
 
+    for ask_balance in ask_balances {
+        match ask_balance {
+            Balance::Native(mut balance) => {
 
-    match ask_balance {
-        Balance::Native(mut balance) => {
 
-            let coin = balance.0.pop().unwrap();
+                for coin in balance.0 {
+                    new_otc.ask_for.push(AskFor {
+                        native: true,
+                        amount: coin.amount,
+                        initial_amount: coin.amount,
+                        denom: Some(coin.denom),
+                        address: None
+                    });
+                }
 
-            if balance.0.len() != 0 { return Err(ContractError::TooManyDenoms{}); }
+            },
 
-            new_otc.ask_amount = coin.amount;
-            new_otc.ask_denom = Some(coin.denom);
-        },
-        Balance::Cw20(token) => {
-            new_otc.ask_amount = token.amount;
-            new_otc.ask_address = Some(token.address);
-        }
-    };
 
+            Balance::Cw20(token) => {
+                new_otc.ask_for.push(AskFor {
+                    native: false,
+                    amount: token.amount,
+                    initial_amount: token.amount,
+                    denom: None,
+                    address: Some(token.address)
+                })
+            }
+        };
+    }
+
+ 
 
     while OTCS.has(deps.storage, config.index) {
         // okay for ~4 billion
@@ -269,14 +281,27 @@ pub fn try_swap(
     }
 
 
+
+
+   
+
     let payment_1 : CosmosMsg = if native {
+
         let mut casted =  cast!(balance, Balance::Native);
         let coin = casted.0.pop().unwrap();
 
         if casted.0.len() != 0 { return Err(ContractError::TooManyDenoms{}); }
-        if coin.denom != otc_info.ask_denom.unwrap() { return Err(ContractError::WrongDenom {}); }
 
-        if coin.amount < otc_info.ask_amount {
+
+        let to_pay = otc_info.ask_for
+            .iter()
+            .find(|ask| matches!(ask.native, true) && ask.denom.as_ref() == Some(&coin.denom))
+            .and_then(|ask| Some(ask))
+            .ok_or(ContractError::WrongDenom {})?;
+
+       
+        // ToDo: calcuulate fractions
+        if coin.amount < to_pay.amount {
             return Err(ContractError::Std(
                 StdError::GenericErr { 
                     msg: "Sent amount is smaller than what being asked".to_string() 
@@ -284,15 +309,22 @@ pub fn try_swap(
             ));
         }
 
+        // Todo: calculate amount to pay
         CosmosMsg::Bank(BankMsg::Send { to_address: seller.into_string(), amount: vec!(coin) })
         
 
     } else {
         let casted = cast!(balance, Balance::Cw20);
 
-        if casted.address != otc_info.ask_address.unwrap() { return Err(ContractError::WrongDenom {}); }
+        let to_pay = otc_info.ask_for
+            .iter()
+            .find(|ask| matches!(ask.native, false) && ask.address.as_ref() == Some(&casted.address))
+            .and_then(|ask| Some(ask))
+            .ok_or(ContractError::WrongDenom {})?;
 
-        if casted.amount < otc_info.ask_amount {
+
+        // ToDo: calculate fractions
+        if casted.amount < to_pay.amount {
             return Err(ContractError::Std(
                 StdError::GenericErr { 
                     msg: "Send amount is smaller than what being asked".to_string() 

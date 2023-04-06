@@ -20,6 +20,17 @@ pub struct UserInfo {
     pub account_type: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct AskFor {
+    pub initial_amount: Uint128,
+    pub amount: Uint128,
+    pub denom: Option<String>,
+    pub address: Option<Addr>,
+    pub native: bool,
+}
+
+
+
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct OTCInfo {
@@ -28,9 +39,7 @@ pub struct OTCInfo {
     pub sell_amount: Uint128,
     pub sell_denom: Option<String>,
     pub sell_address: Option<Addr>,
-    pub ask_amount: Uint128,
-    pub ask_denom: Option<String>,
-    pub ask_address: Option<Addr>,
+    pub ask_for: Vec<AskFor>,
     pub expires: Expiration,
     pub user_info: Option<UserInfo>,
     pub description: Option<String>,

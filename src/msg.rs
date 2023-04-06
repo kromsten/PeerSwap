@@ -14,7 +14,7 @@ pub struct InstantiateMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct NewOTC {
-    pub ask_balance: Balance, 
+    pub ask_balances: Vec<Balance>, 
 
     // seconds since epoch
     pub expires: Option<Expiration>,

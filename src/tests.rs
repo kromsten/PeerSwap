@@ -31,7 +31,7 @@ mod tests {
         ));
         
         let msg = ExecuteMsg::Create(NewOTC {
-            ask_balance: Balance::Native(NativeBalance(coins(ask_amount.clone(), ask_denom.clone()))),
+            ask_balances: vec![Balance::Native(NativeBalance(coins(ask_amount.clone(), ask_denom.clone())))],
             expires,
             user_info: None,
             description: None,
@@ -59,8 +59,8 @@ mod tests {
                 
                 let info = res.otc;
 
-                assert_eq!(info.ask_amount, Uint128::from(ask_amount));
-                assert_eq!(info.ask_denom, Some(ask_denom.to_string()));
+                assert_eq!(info.ask_for[0].amount, Uint128::from(ask_amount));
+                assert_eq!(info.ask_for[0].denom, Some(ask_denom.to_string()));
 
                 assert_eq!(info.sell_native, true);
                 assert_eq!(info.sell_amount, Uint128::from(sell_amount));
@@ -146,7 +146,7 @@ mod tests {
         assert_eq!(id, &count);
 
         assert!(
-            otc.ask_amount == Uint128::from(10 as u8) &&
+            otc.ask_for[0].amount == Uint128::from(10 as u8) &&
             deps.api.addr_humanize(&otc.seller).unwrap() == "alice",
         );
 
