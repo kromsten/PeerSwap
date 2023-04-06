@@ -59,7 +59,6 @@ mod tests {
                 
                 let info = res.otc;
 
-                assert_eq!(info.ask_native, true);
                 assert_eq!(info.ask_amount, Uint128::from(ask_amount));
                 assert_eq!(info.ask_denom, Some(ask_denom.to_string()));
 
@@ -147,7 +146,6 @@ mod tests {
         assert_eq!(id, &count);
 
         assert!(
-            otc.ask_native &&
             otc.ask_amount == Uint128::from(10 as u8) &&
             deps.api.addr_humanize(&otc.seller).unwrap() == "alice",
         );

@@ -28,7 +28,6 @@ pub struct OTCInfo {
     pub sell_amount: Uint128,
     pub sell_denom: Option<String>,
     pub sell_address: Option<Addr>,
-    pub ask_native: bool,
     pub ask_amount: Uint128,
     pub ask_denom: Option<String>,
     pub ask_address: Option<Addr>,

@@ -174,7 +174,6 @@ pub fn try_create_otc(
         sell_amount: Uint128::from(0 as u8),
         sell_denom: None,
         sell_address: None,
-        ask_native: false,
         ask_amount: Uint128::from(0 as u8),
         ask_denom: None,
         ask_address: None,
@@ -215,12 +214,10 @@ pub fn try_create_otc(
 
             if balance.0.len() != 0 { return Err(ContractError::TooManyDenoms{}); }
 
-            new_otc.ask_native = true;
             new_otc.ask_amount = coin.amount;
             new_otc.ask_denom = Some(coin.denom);
         },
         Balance::Cw20(token) => {
-            new_otc.ask_native = false;
             new_otc.ask_amount = token.amount;
             new_otc.ask_address = Some(token.address);
         }
@@ -260,7 +257,6 @@ pub fn try_swap(
     
     let otc_info = OTCS.load(deps.storage, otc_id)?;
 
-    if otc_info.ask_native ^ native { return Err(ContractError::WrongDenom {}); }
 
     let seller = deps.api.addr_humanize(&otc_info.seller)?;
 
