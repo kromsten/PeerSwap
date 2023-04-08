@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128, Addr, WasmMsg, from_binary, BankMsg, CosmosMsg, Coin, Order,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128, Addr, WasmMsg, from_binary, BankMsg, CosmosMsg, Coin, Order, Decimal,
 };
 use cw2::set_contract_version;
 
@@ -172,6 +172,7 @@ pub fn try_create_otc(
         seller: deps.api.addr_canonicalize(seller.as_str())?,
         sell_native: false,
         sell_amount: Uint128::from(0 as u8),
+        initial_sell_amount: Uint128::from(0 as u8),
         sell_denom: None,
         sell_address: None,
         ask_for: vec![],
@@ -195,18 +196,20 @@ pub fn try_create_otc(
             }
             new_otc.sell_native = true;
             new_otc.sell_amount = coin.amount;
+            new_otc.initial_sell_amount = coin.amount;
             new_otc.sell_denom = Some(coin.denom);
         },
         Balance::Cw20(token) => {
             new_otc.sell_native = false;
             new_otc.sell_amount = token.amount;
+            new_otc.initial_sell_amount = token.amount;
             new_otc.sell_address = Some(token.address);
         }
     };
 
     for ask_balance in ask_balances {
         match ask_balance {
-            Balance::Native(mut balance) => {
+            Balance::Native(balance) => {
 
 
                 for coin in balance.0 {
@@ -267,7 +270,7 @@ pub fn try_swap(
     native: bool,
     ) -> Result<Response, ContractError> {
     
-    let otc_info = OTCS.load(deps.storage, otc_id)?;
+    let mut otc_info = OTCS.load(deps.storage, otc_id)?;
 
 
     let seller = deps.api.addr_humanize(&otc_info.seller)?;
@@ -279,11 +282,8 @@ pub fn try_swap(
             }
         ));
     }
-
-
-
-
    
+   let to_sell_amount : Uint128; 
 
     let payment_1 : CosmosMsg = if native {
 
@@ -299,17 +299,26 @@ pub fn try_swap(
             .and_then(|ask| Some(ask))
             .ok_or(ContractError::WrongDenom {})?;
 
-       
-        // ToDo: calcuulate fractions
-        if coin.amount < to_pay.amount {
-            return Err(ContractError::Std(
-                StdError::GenericErr { 
-                    msg: "Sent amount is smaller than what being asked".to_string() 
-                }
-            ));
-        }
 
-        // Todo: calculate amount to pay
+
+
+        let ratio = if to_pay.amount  > coin.amount  {
+                Decimal::from_ratio(to_pay.amount - coin.amount, to_pay.amount)
+            }
+            else {
+                Decimal::one()
+        };
+        
+
+        to_sell_amount =  otc_info.sell_amount * ratio;
+
+        otc_info.ask_for = otc_info.ask_for
+            .iter()
+            .map(|ask|  AskFor { amount: ask.amount * ratio, ..ask.clone() }
+            )
+            .collect();
+;       
+
         CosmosMsg::Bank(BankMsg::Send { to_address: seller.into_string(), amount: vec!(coin) })
         
 
@@ -323,14 +332,23 @@ pub fn try_swap(
             .ok_or(ContractError::WrongDenom {})?;
 
 
-        // ToDo: calculate fractions
-        if casted.amount < to_pay.amount {
-            return Err(ContractError::Std(
-                StdError::GenericErr { 
-                    msg: "Send amount is smaller than what being asked".to_string() 
-                }
-            ));
+
+
+        let ratio = if to_pay.amount  > casted.amount  {
+            Decimal::from_ratio(to_pay.amount - casted.amount, to_pay.amount)
         }
+        else {
+            Decimal::one()
+        };
+
+        to_sell_amount =  otc_info.sell_amount * ratio;
+
+        otc_info.ask_for = otc_info.ask_for
+            .iter()
+            .map(|ask|  AskFor { amount: ask.amount * ratio, ..ask.clone() }
+            )
+            .collect();
+
 
         CosmosMsg::Wasm(WasmMsg::Execute { 
             contract_addr: casted.address.to_string(), 
@@ -341,17 +359,18 @@ pub fn try_swap(
     };
 
 
+
     let payment_2 : CosmosMsg = if otc_info.sell_native {
         CosmosMsg::Bank(BankMsg::Send { 
             to_address: payer.clone().into_string(), 
-            amount: vec!(Coin { denom: otc_info.sell_denom.unwrap(), amount: otc_info.sell_amount }) 
+            amount: vec!(Coin { denom: otc_info.sell_denom.unwrap(), amount: to_sell_amount }) 
         })
     } else {
         CosmosMsg::Wasm(WasmMsg::Execute { 
             contract_addr: otc_info.sell_address.unwrap().to_string(), 
             msg: to_binary(&Cw20ExecuteMsg::Transfer { 
                 recipient: payer.to_string(), 
-                amount: otc_info.sell_amount 
+                amount: to_sell_amount 
             })?, 
             funds: vec!()
         })

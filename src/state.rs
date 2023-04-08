@@ -37,6 +37,7 @@ pub struct OTCInfo {
     pub seller: CanonicalAddr,
     pub sell_native: bool,
     pub sell_amount: Uint128,
+    pub initial_sell_amount: Uint128,
     pub sell_denom: Option<String>,
     pub sell_address: Option<Addr>,
     pub ask_for: Vec<AskFor>,
