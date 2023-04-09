@@ -15,6 +15,9 @@ pub enum ContractError {
     #[error("Wrong denomination")]
     WrongDenom {},
 
+    #[error("The offer doesn't exist or has been completed already")] 
+    NotFound {},
+
     #[error("Cannot set approval that is already expired")]
     Expired {},
 

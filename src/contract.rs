@@ -140,6 +140,65 @@ pub fn execute_receive(
 }
 
 
+
+pub fn try_cancell_otc(
+    deps: DepsMut,
+    env: Env,
+    sender: &Addr,
+    otc_id: u32,
+    ) -> Result<Response, ContractError> {
+
+    let res = OTCS.load(deps.storage, otc_id);
+        
+    // unwrap or return error
+    if !res.is_ok() { return  Err(ContractError::NotFound {  }) }; 
+
+    let mut otc = res.unwrap();
+
+    if otc.expires.is_expired(&env.block) {
+        return Err(ContractError::Expired {});
+    };
+
+    let seller = deps.api.addr_humanize(&otc.seller)?;
+    if sender != &seller {
+        return Err(ContractError::Unauthorized {});
+    };
+
+
+    let payment = if otc.sell_native {
+        CosmosMsg::Bank(BankMsg::Send {
+            to_address: seller.clone().to_string(),
+            amount: vec![Coin {
+                denom: env.contract.address.to_string(),
+                amount: otc.sell_amount.into(),
+            }],
+        })
+    } else {
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: otc.sell_address.clone().unwrap().to_string(),
+            funds: vec![],
+            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+                recipient: deps.api.addr_humanize(&otc.seller)?.to_string(),
+                amount: otc.sell_amount.into(),
+            })?,
+        })
+    };
+
+
+    Ok(Response::new()
+        .add_messages(vec!(
+            payment
+        ))
+        .add_attribute("method", "cancell")
+        .add_attributes(vec![
+            ("otc_id", otc_id.to_string()),
+            ("amount", otc.sell_amount.to_string()),
+            ("currency", if otc.sell_native { otc.sell_denom.unwrap() } else { String::from("cw20:") + &otc.sell_address.unwrap().to_string() }),
+        ])
+    )
+}
+
+
 pub fn try_create_otc(
     deps: DepsMut,
     env: Env,
