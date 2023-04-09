@@ -38,6 +38,10 @@ pub enum ExecuteMsg {
         otc_id: u32
     },
 
+    Cancel {
+        otc_id: u32
+    },
+
     /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
     Receive(Cw20ReceiveMsg),
 }

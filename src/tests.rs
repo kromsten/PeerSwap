@@ -310,7 +310,21 @@ mod tests {
 
     }
    
+    #[test]
+    fn can_cancell() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        instantiate_contract(deps.as_mut());
+        sell_native_ask_native(deps.as_mut(), 0, None);
 
+        assert_eq!(query_otcs(deps.as_ref(),env.clone(), None, None, None).otcs.len(), 1);
+
+        let msg = ExecuteMsg::Cancel { otc_id: 0 };
+        let info = mock_info("alice", &[]);
+        let res = execute(deps.as_mut(), mock_env(), info, msg.clone()).unwrap();
+        assert_eq!(res.attributes[0].value, "cancel");
+        assert_eq!(query_otcs(deps.as_ref(),env.clone(), None, None, None).otcs.len(), 0);
+    }
 
 
 

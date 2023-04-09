@@ -88,6 +88,13 @@ pub fn execute(
             Balance::from(info.funds),
             true
         ),
+
+        ExecuteMsg::Cancel { otc_id } => try_cancel_otc(
+            deps, 
+            env, 
+            &info.sender, 
+            otc_id
+        ),
         
         ExecuteMsg::Receive(msg) => {
             execute_receive(deps, env, info, msg)
@@ -139,7 +146,7 @@ pub fn execute_receive(
 
 
 
-pub fn try_cancell_otc(
+pub fn try_cancel_otc(
     deps: DepsMut,
     env: Env,
     sender: &Addr,
@@ -188,7 +195,7 @@ pub fn try_cancell_otc(
         .add_messages(vec!(
             payment
         ))
-        .add_attribute("method", "cancell")
+        .add_attribute("method", "cancel")
         .add_attributes(vec![
             ("otc_id", otc_id.to_string()),
             ("amount", otc.sell_amount.to_string()),
@@ -266,7 +273,7 @@ pub fn try_create_otc(
             new_otc.sell_address = Some(token.address);
         }
     };
-    
+
 
     for ask_balance in ask_balances {
         match ask_balance {
