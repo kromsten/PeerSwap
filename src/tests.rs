@@ -14,10 +14,10 @@ mod tests {
 
     fn sell_native_ask_native(deps : DepsMut, count: u32, expires: Option<Expiration>) {
 
-        let sell_amount = 5;
+        let sell_amount = 5000000;
         let sell_denom = "token_1";
 
-        let ask_amount = 10;
+        let ask_amount = 10000000;
         let ask_denom = "token_2";
 
         //let api = deps.api;
@@ -101,6 +101,32 @@ mod tests {
         value
     }
 
+
+    fn print_response(res: &Response) {
+
+        println!("Messages:");
+        for msg in res.messages.iter() {
+            println!("{:?}", msg);
+        }
+        println!("");
+
+        println!("Attributes:");
+        for attr in res.attributes.iter() {
+            println!("{:?}", attr);
+        }
+        println!("");
+
+
+        println!("Events:");
+        for event in res.events.iter() {
+            println!("{:?}", event);
+        }
+        println!("");
+
+        println!("Data:");
+        println!("{:?}", res.data);
+
+    }
     
 
     #[test]
@@ -146,14 +172,14 @@ mod tests {
         assert_eq!(id, &count);
 
         assert!(
-            otc.ask_for[0].amount == Uint128::from(10 as u8) &&
+            otc.ask_for[0].amount == Uint128::from(10_000_000 as u128 ) &&
             deps.api.addr_humanize(&otc.seller).unwrap() == "alice",
         );
 
-
-        let same_person_info = mock_info("alice", &coins(10, "token_2"));
-        let smaller_amount_info = mock_info("bob", &coins(1, "token_2"));
-        let wrong_denom_info = mock_info("bob", &coins(10, "token_3"));
+        let right_info = mock_info("bob", &coins(10_000_000, "token_2"));
+        let same_person_info = mock_info("alice", &coins(10_000_000, "token_2"));
+        let smaller_amount_info = mock_info("bob", &coins(1_000_000, "token_2"));
+        let wrong_denom_info = mock_info("bob", &coins(10_000_000, "token_3"));
         let multiple_tokens_info = mock_info("bob", 
             &vec!(
                 Coin { 
@@ -167,17 +193,35 @@ mod tests {
             )
         );
         //let bigger_amount_info = mock_info("bob", &coins(100, "token_2"));
-        let right_info = mock_info("bob", &coins(10, "token_2"));
-
         let msg = ExecuteMsg::Swap { otc_id: count.clone() };
 
         let res = execute(deps.as_mut(), mock_env(), same_person_info, msg.clone()).unwrap_err();
         assert_eq!(res.to_string(), "Generic error: Can't swap with yourself");
 
 
-        let res = execute(deps.as_mut(), mock_env(), smaller_amount_info, msg.clone()).unwrap_err();
-        assert_eq!(res.to_string(), "Generic error: Sent amount is smaller than what being asked");
-     
+        let res = execute(deps.as_mut(), mock_env(), smaller_amount_info, msg.clone()).unwrap();
+        print_response(&res);
+
+
+        // sent from otc offer to buyer
+        assert_eq!(res.attributes[2].value, "500000");
+
+        // sent to sellet from buyer
+        assert_eq!(res.attributes[4].value, "1000000");
+
+
+        let otcs = query_otcs(deps.as_ref(), env.clone(), None, None, None).otcs;
+        assert_eq!(otcs.len(), 1);
+
+        let (id, otc) = &otcs[0];
+        assert_eq!(id, &count);
+
+        // reduced amount
+        assert!(
+            otc.ask_for[0].amount == Uint128::from(9_000_000 as u128 ) &&
+            deps.api.addr_humanize(&otc.seller).unwrap() == "alice",
+        );
+
 
         let res = execute(deps.as_mut(), mock_env(), wrong_denom_info, msg.clone()).unwrap_err();
         assert_eq!(res.to_string(), ContractError::WrongDenom {}.to_string());

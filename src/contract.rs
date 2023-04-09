@@ -302,8 +302,6 @@ pub fn try_swap(
             .ok_or(ContractError::WrongDenom {})?;
 
 
-
-
         let ratio = if to_pay.amount  > coin.amount  {
                 Decimal::from_ratio(to_pay.amount - coin.amount, to_pay.amount)
             }
@@ -311,17 +309,16 @@ pub fn try_swap(
                 Decimal::one()
         };
         
-
         to_sell_amount =  otc_info.sell_amount - otc_info.sell_amount * ratio;
         swapped_amount = coin.amount.clone();
         swapped_currency = coin.denom.clone();
+
 
         otc_info.ask_for = otc_info.ask_for
             .iter()
             .map(|ask|  AskFor { amount: ask.amount * ratio, ..ask.clone() }
             )
             .collect();
-;       
 
         CosmosMsg::Bank(BankMsg::Send { to_address: seller.into_string(), amount: vec!(coin) })
         
