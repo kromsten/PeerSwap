@@ -153,7 +153,7 @@ pub fn try_cancell_otc(
     // unwrap or return error
     if !res.is_ok() { return  Err(ContractError::NotFound {  }) }; 
 
-    let mut otc = res.unwrap();
+    let otc = res.unwrap();
 
     if otc.expires.is_expired(&env.block) {
         return Err(ContractError::Expired {});
@@ -184,6 +184,7 @@ pub fn try_cancell_otc(
         })
     };
 
+    OTCS.remove(deps.storage, otc_id);
 
     Ok(Response::new()
         .add_messages(vec!(
@@ -217,7 +218,7 @@ pub fn try_create_otc(
     if !config.active {
         return Err(ContractError::Std(
             StdError::GenericErr { 
-                msg: "The factory has been stopped.  No new otc can be created".to_string() 
+                msg: "The factory has been stopped. No new otc can be created".to_string() 
             }
         ));
     }
@@ -242,7 +243,7 @@ pub fn try_create_otc(
 
 
     
-    let native: bool = match sell_balance {
+    match sell_balance {
         Balance::Native(mut balance) => {
             let coin = balance.0.pop().unwrap();
 
@@ -258,14 +259,12 @@ pub fn try_create_otc(
             new_otc.sell_amount = coin.amount;
             new_otc.initial_sell_amount = coin.amount;
             new_otc.sell_denom = Some(coin.denom);
-            true
         },
         Balance::Cw20(token) => {
             new_otc.sell_native = false;
             new_otc.sell_amount = token.amount;
             new_otc.initial_sell_amount = token.amount;
             new_otc.sell_address = Some(token.address);
-            false
         }
     };
 
@@ -316,7 +315,6 @@ pub fn try_create_otc(
     };
 
 
-
     Ok(Response::new()
         .set_data(to_binary(&data).unwrap())
         .add_attributes(vec![
@@ -327,7 +325,6 @@ pub fn try_create_otc(
             ("currency", &new_otc.sell_denom.unwrap_or_else(|| String::from("cw20:") + &new_otc.sell_address.unwrap().to_string())),
         ])
     )
-
 }
 
 
