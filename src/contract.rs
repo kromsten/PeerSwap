@@ -134,8 +134,6 @@ pub fn execute_receive(
             )
         }
     }
-
-
     
 }
 
@@ -230,15 +228,16 @@ pub fn try_create_otc(
 
     let mut new_otc = OTCInfo {
         seller: deps.api.addr_canonicalize(seller.as_str())?,
-        sell_native: false,
-        sell_amount: Uint128::from(0 as u8),
-        initial_sell_amount: Uint128::from(0 as u8),
+        expires,
+        user_info,
+        description,
+        // default feilds
+        sell_native: true,
+        sell_amount: Uint128::zero(),
+        initial_sell_amount: Uint128::zero(),
         sell_denom: None,
         sell_address: None,
         ask_for: vec![],
-        expires,
-        user_info,
-        description
     };
 
 
@@ -267,6 +266,7 @@ pub fn try_create_otc(
             new_otc.sell_address = Some(token.address);
         }
     };
+    
 
     for ask_balance in ask_balances {
         match ask_balance {
