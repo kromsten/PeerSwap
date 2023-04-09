@@ -283,7 +283,9 @@ pub fn try_swap(
         ));
     }
    
-   let to_sell_amount : Uint128; 
+   let to_sell_amount : Uint128;
+   let swapped_amount : Uint128; 
+   let swapped_currency : String;
 
     let payment_1 : CosmosMsg = if native {
 
@@ -310,7 +312,9 @@ pub fn try_swap(
         };
         
 
-        to_sell_amount =  otc_info.sell_amount * ratio;
+        to_sell_amount =  otc_info.sell_amount - otc_info.sell_amount * ratio;
+        swapped_amount = coin.amount.clone();
+        swapped_currency = coin.denom.clone();
 
         otc_info.ask_for = otc_info.ask_for
             .iter()
@@ -341,7 +345,10 @@ pub fn try_swap(
             Decimal::one()
         };
 
-        to_sell_amount =  otc_info.sell_amount * ratio;
+        to_sell_amount =  otc_info.sell_amount -otc_info.sell_amount * ratio;
+
+        swapped_amount = casted.amount;
+        swapped_currency = casted.address.to_string();
 
         otc_info.ask_for = otc_info.ask_for
             .iter()
@@ -363,21 +370,26 @@ pub fn try_swap(
     let payment_2 : CosmosMsg = if otc_info.sell_native {
         CosmosMsg::Bank(BankMsg::Send { 
             to_address: payer.clone().into_string(), 
-            amount: vec!(Coin { denom: otc_info.sell_denom.unwrap(), amount: to_sell_amount }) 
+            amount: vec!(Coin { denom: otc_info.sell_denom.clone().unwrap(), amount: to_sell_amount }) 
         })
     } else {
         CosmosMsg::Wasm(WasmMsg::Execute { 
-            contract_addr: otc_info.sell_address.unwrap().to_string(), 
+            contract_addr: otc_info.sell_address.clone().unwrap().to_string(), 
             msg: to_binary(&Cw20ExecuteMsg::Transfer { 
                 recipient: payer.to_string(), 
                 amount: to_sell_amount 
             })?, 
             funds: vec!()
         })
-    };
+    };  
 
 
-    OTCS.remove(deps.storage, otc_id);
+    if otc_info.sell_amount <= Uint128::zero() {
+        OTCS.remove(deps.storage, otc_id);
+    } else {
+        OTCS.save(deps.storage, otc_id, &otc_info)?;
+    }
+
     
 
     Ok(Response::new()
@@ -386,6 +398,13 @@ pub fn try_swap(
             payment_2
         ))
         .add_attribute("method", "swap")
+        .add_attributes(vec![
+            ("otc_id", otc_id.to_string()),
+            ("given amount", to_sell_amount.to_string()),
+            ("given_currency", if otc_info.sell_native { otc_info.sell_denom.unwrap() } else { otc_info.sell_address.unwrap().to_string() }),
+            ("sent_amount", swapped_amount.to_string()),
+            ("sent_currency", swapped_currency)
+        ])
     )
 }
 
