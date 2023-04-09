@@ -241,7 +241,8 @@ pub fn try_create_otc(
     };
 
 
-    match sell_balance {
+    
+    let native: bool = match sell_balance {
         Balance::Native(mut balance) => {
             let coin = balance.0.pop().unwrap();
 
@@ -257,12 +258,14 @@ pub fn try_create_otc(
             new_otc.sell_amount = coin.amount;
             new_otc.initial_sell_amount = coin.amount;
             new_otc.sell_denom = Some(coin.denom);
+            true
         },
         Balance::Cw20(token) => {
             new_otc.sell_native = false;
             new_otc.sell_amount = token.amount;
             new_otc.initial_sell_amount = token.amount;
             new_otc.sell_address = Some(token.address);
+            false
         }
     };
 
@@ -309,12 +312,20 @@ pub fn try_create_otc(
 
     let data = NewOTCResponse {
         id: config.index,
-        otc: new_otc
+        otc: new_otc.clone()
     };
+
+
 
     Ok(Response::new()
         .set_data(to_binary(&data).unwrap())
-        .add_attribute("method", "create_new_otc")
+        .add_attributes(vec![
+            ("method", "create_new_otc"),
+            ("otc_id", &config.index.to_string()),
+            ("seller", &seller.to_string()),
+            ("amount", &new_otc.sell_amount.to_string()),
+            ("currency", &new_otc.sell_denom.unwrap_or_else(|| String::from("cw20:") + &new_otc.sell_address.unwrap().to_string())),
+        ])
     )
 
 }
