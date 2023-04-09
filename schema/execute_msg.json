@@ -195,11 +195,14 @@
     "NewOTC": {
       "type": "object",
       "required": [
-        "ask_balance"
+        "ask_balances"
       ],
       "properties": {
-        "ask_balance": {
-          "$ref": "#/definitions/Balance"
+        "ask_balances": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Balance"
+          }
         },
         "description": {
           "type": [
