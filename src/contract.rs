@@ -82,7 +82,8 @@ pub fn execute(
         ),
 
         ExecuteMsg::Swap { otc_id } => try_swap(
-            deps, 
+            deps,
+            env,
             &info.sender, 
             otc_id,
             Balance::from(info.funds),
@@ -134,6 +135,7 @@ pub fn execute_receive(
         ReceiveMsg::Swap { otc_id } => {
             try_swap(
                 deps, 
+                env,
                 &api.addr_validate(&wrapper.sender)?, 
                 otc_id,
                 balance,
@@ -146,30 +148,14 @@ pub fn execute_receive(
 
 
 
-pub fn try_cancel_otc(
-    deps: DepsMut,
+pub fn refund_payment(
+    deps: Deps,
     env: Env,
-    sender: &Addr,
-    otc_id: u32,
-    ) -> Result<Response, ContractError> {
+    otc: &OTCInfo,
+    seller: &Addr
 
-    let res = OTCS.load(deps.storage, otc_id);
-        
-    // unwrap or return error
-    if !res.is_ok() { return  Err(ContractError::NotFound {  }) }; 
-
-    let otc = res.unwrap();
-
-    if otc.expires.is_expired(&env.block) {
-        return Err(ContractError::Expired {});
-    };
-
-    let seller = deps.api.addr_humanize(&otc.seller)?;
-    if sender != &seller {
-        return Err(ContractError::Unauthorized {});
-    };
-
-
+) -> CosmosMsg {
+    
     let payment = if otc.sell_native {
         CosmosMsg::Bank(BankMsg::Send {
             to_address: seller.clone().to_string(),
@@ -183,11 +169,35 @@ pub fn try_cancel_otc(
             contract_addr: otc.sell_address.clone().unwrap().to_string(),
             funds: vec![],
             msg: to_binary(&Cw20ExecuteMsg::Transfer {
-                recipient: deps.api.addr_humanize(&otc.seller)?.to_string(),
+                recipient: deps.api.addr_humanize(&otc.seller).unwrap().to_string(),
                 amount: otc.sell_amount.into(),
-            })?,
+            }).unwrap(),
         })
     };
+
+    payment
+}
+
+
+
+pub fn try_cancel_otc(
+    deps: DepsMut,
+    env: Env,
+    sender: &Addr,
+    otc_id: u32,
+    ) -> Result<Response, ContractError> {
+
+    let res = OTCS.load(deps.storage, otc_id);
+    if !res.is_ok() { return  Err(ContractError::NotFound {  }) }; 
+
+    let otc = res.unwrap();
+
+    let seller = deps.api.addr_humanize(&otc.seller)?;
+    if sender != &seller {
+        return Err(ContractError::Unauthorized {});
+    };
+
+    let payment = refund_payment(deps.as_ref(), env, &otc, &seller);
 
     OTCS.remove(deps.storage, otc_id);
 
@@ -201,6 +211,56 @@ pub fn try_cancel_otc(
             ("amount", otc.sell_amount.to_string()),
             ("currency", if otc.sell_native { otc.sell_denom.unwrap() } else { String::from("cw20:") + &otc.sell_address.unwrap().to_string() }),
         ])
+    )
+}
+
+
+
+pub fn remove_expired(
+    deps: DepsMut,
+    env: Env
+) -> Result<Response, ContractError> {
+
+
+    let result : StdResult<Vec<_>> = OTCS
+    .range(
+        deps.storage, 
+        None, 
+        None, 
+        Order::Ascending
+    )
+    .filter(|otc|  
+        otc.is_ok() && 
+        otc.as_ref().unwrap().1.expires.is_expired(&env.block) 
+    )
+    .collect();
+
+    let expired_otcs = result.unwrap();
+
+
+    let mut logs = vec![
+        ("method", String::from("remove_expired")),
+    ];
+
+    for (id, otc) in expired_otcs {
+        
+        refund_payment(deps.as_ref(), env.clone(), &otc, &deps.api.addr_humanize(&otc.seller).unwrap());
+        
+        OTCS.remove(deps.storage, id);
+        
+        let log_text = format!("{} : {} {} to {}", 
+                id, 
+                otc.sell_amount, 
+                if otc.sell_native { otc.sell_denom.unwrap() } else { String::from("cw20:") + &otc.sell_address.unwrap().to_string() }, 
+                otc.seller
+        );
+
+        logs.push(("refunded", log_text));
+    }
+
+
+    Ok(Response::new()
+        .add_attributes(logs)
     )
 }
 
@@ -338,6 +398,7 @@ pub fn try_create_otc(
 
 pub fn try_swap(
     deps: DepsMut,
+    env: Env,
     payer: &Addr,
     otc_id: u32,
     balance: Balance,
@@ -355,6 +416,11 @@ pub fn try_swap(
                 msg: "Can't swap with yourself".to_string() 
             }
         ));
+    }
+
+    let expires = otc_info.expires;
+    if expires.is_expired(&env.block) {
+        return Err(ContractError::Expired {});
     }
    
    let to_sell_amount : Uint128;
