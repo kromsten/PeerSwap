@@ -2,12 +2,14 @@
 mod tests {
     use std::vec;
 
-    use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api};
+    use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api, Event};
     use cw20::Balance;
     use cw_multi_test::{App, ContractWrapper, Executor};
     use cw_utils::{NativeBalance, Expiration};
 
     use crate::{contract::{*}, msg::{QueryMsg, GetOTCsResponse, ExecuteMsg, NewOTC, NewOTCResponse}, error::ContractError, state::{OTCInfo, AskFor}};
+
+
 
     fn mock_app() -> App {
         App::default()
@@ -59,6 +61,30 @@ mod tests {
         res
     }
 
+    pub fn create_new_otc_with_funds(
+        app: &mut App, 
+        contract_address: Addr, 
+        otc_data: NewOTC,
+        send_funds: &Vec<Coin>
+
+    ) -> Result<NewOTCResponse, cosmwasm_std::StdError> {
+
+        let alice = Addr::unchecked("alice");
+
+        let res =app.execute_contract(
+            alice.clone(),
+            contract_address.clone(),
+            &ExecuteMsg::Create( otc_data ),
+            send_funds,
+        ).unwrap();
+
+        from_binary(&res.data.unwrap())
+    }
+
+    pub fn native_wrapper(amount: u128, denom: String) -> Vec<cw20::Balance> {
+        vec![cw20::Balance::Native( NativeBalance( vec![ coin(amount, denom) ] ) )]
+    }
+
 
     #[test]
     fn init_contract() {
@@ -70,6 +96,7 @@ mod tests {
     #[test]
     fn init_balance() {
         let mut app = mock_app();
+
         let alice = Addr::unchecked("alice");
         let token = String::from("token1");
         
@@ -243,18 +270,7 @@ mod tests {
             contract_address.clone(),
             &ExecuteMsg::Create(
                 new_otc_with_nones(
-                    vec![
-                    cw20::Balance::Native(
-                        NativeBalance(
-                            vec![
-                                coin(
-                                    to_ask.clone(), 
-                                    token2.clone()
-                                )
-                            ]
-                        )
-                    )
-                ]
+                    native_wrapper(to_ask.clone(), token2.clone())
                 )
             ),
             &vec![coin(to_sell, token.clone())],
@@ -278,6 +294,89 @@ mod tests {
         
         
     }
+
+
+    #[test]
+    fn create_native_swap_native_full()  {
+
+        let mut app = mock_app();
+        let contract_address = init_main(&mut app);
+
+        let alice = Addr::unchecked("alice");
+        let bob = Addr::unchecked("bob");
+
+        let token = String::from("token1");
+        let token2 = String::from("token2");
+
+        let amount : u128 = 10_000_000;
+        let amount2 : u128 = 5_000_000;
+        
+        mint_native(
+            &mut app, 
+            alice.clone().to_string(), 
+            token.clone(), 
+            amount.clone()
+        );
+
+        mint_native(
+            &mut app, 
+            bob.clone().to_string(), 
+            token2.clone(), 
+            amount2.clone()
+        );
+
+
+        let _new_otc = create_new_otc_with_funds(
+            &mut app, 
+            contract_address.clone(), 
+            new_otc_with_nones(
+                native_wrapper(
+                    amount2.clone(), 
+                    token2.clone()
+                )
+            ),
+            &vec![coin(amount.clone(), token.clone())],
+            
+        ).unwrap();
+    
+        
+        let otcs = query_otcs(&app, contract_address.clone()).unwrap();
+        assert_eq!(otcs.otcs.len(), 1);
+
+        let (id, _) = otcs.otcs[0].clone();
+
+
+        let res = app.execute_contract(
+            bob.clone(), 
+            contract_address.clone(), 
+            &ExecuteMsg::Swap {
+                otc_id: id,
+            },
+            &vec![
+                coin(amount2.clone(), token2.clone())
+            ]
+        ).unwrap();
+
+
+        let wasm_event = res.events[1].clone();
+
+        let given_amount = &wasm_event.attributes[3];
+        let given_token = &wasm_event.attributes[4];
+
+        let sent_amount = &wasm_event.attributes[5];
+        let sent_token = &wasm_event.attributes[6];
+
+        let completed = &wasm_event.attributes[7];
+
+
+        assert_eq!(given_amount.value, amount.clone().to_string());
+        assert_eq!(given_token.value, token.clone());
+        assert_eq!(sent_amount.value, amount2.clone().to_string());
+        assert_eq!(sent_token.value, token2.clone());
+        assert_eq!(completed.value, "true")
+        
+    }
+
 
 
 }

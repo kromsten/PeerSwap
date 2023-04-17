@@ -434,6 +434,9 @@ pub fn try_swap(
     let payment_1 : CosmosMsg = if native {
 
         let mut casted =  cast!(balance, Balance::Native);
+
+        if casted.0.len() == 0 { return Err(ContractError::WrongDenom {} ); }
+
         let coin = casted.0.pop().unwrap();
 
         if casted.0.len() != 0 { return Err(ContractError::TooManyDenoms{}); }
@@ -450,13 +453,14 @@ pub fn try_swap(
                 Decimal::from_ratio(to_pay.amount - coin.amount, to_pay.amount)
             }
             else {
-                Decimal::one()
+                Decimal::zero()
         };
         
         to_sell_amount =  otc_info.sell_amount - otc_info.sell_amount * ratio;
+        otc_info.sell_amount -= to_sell_amount;
+
         swapped_amount = coin.amount.clone();
         swapped_token = coin.denom.clone();
-
 
         otc_info.ask_for = otc_info.ask_for
             .iter()
@@ -483,10 +487,12 @@ pub fn try_swap(
             Decimal::from_ratio(to_pay.amount - casted.amount, to_pay.amount)
         }
         else {
-            Decimal::one()
+            Decimal::zero()
         };
 
-        to_sell_amount =  otc_info.sell_amount -otc_info.sell_amount * ratio;
+
+        to_sell_amount =  otc_info.sell_amount - otc_info.sell_amount * ratio;
+        otc_info.sell_amount -= to_sell_amount;
 
         swapped_amount = casted.amount;
         swapped_token = casted.address.to_string();
@@ -525,27 +531,34 @@ pub fn try_swap(
     };  
 
 
+    let mut attributes: Vec<(&str, String)> = vec![
+        ("method", String::from("swap")),
+        ("otc_id", otc_id.to_string()),
+        ("given amount", to_sell_amount.to_string()),
+        ("given_token", if otc_info.sell_native { otc_info.sell_denom.clone().unwrap() } else { otc_info.sell_address.clone().unwrap().to_string() }),
+        ("sent_amount", swapped_amount.to_string()),
+        ("sent_token", swapped_token)
+    ];
+
     if otc_info.sell_amount <= Uint128::zero() {
         OTCS.remove(deps.storage, otc_id);
+        attributes.push(
+            ("completed", String::from("true"))
+        )
     } else {
         OTCS.save(deps.storage, otc_id, &otc_info)?;
+        attributes.push(
+            ("completed", String::from("false"))
+        )
     }
 
-    
 
     Ok(Response::new()
         .add_messages(vec!(
             payment_1,
             payment_2
         ))
-        .add_attribute("method", "swap")
-        .add_attributes(vec![
-            ("otc_id", otc_id.to_string()),
-            ("given amount", to_sell_amount.to_string()),
-            ("given_token", if otc_info.sell_native { otc_info.sell_denom.unwrap() } else { otc_info.sell_address.unwrap().to_string() }),
-            ("sent_amount", swapped_amount.to_string()),
-            ("sent_token", swapped_token)
-        ])
+        .add_attributes(attributes)
     )
 }
 
