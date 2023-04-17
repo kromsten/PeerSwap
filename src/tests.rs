@@ -177,7 +177,6 @@ mod tests {
         );
 
         let right_info = mock_info("bob", &coins(10_000_000, "token_2"));
-        let same_person_info = mock_info("alice", &coins(10_000_000, "token_2"));
         let smaller_amount_info = mock_info("bob", &coins(1_000_000, "token_2"));
         let wrong_denom_info = mock_info("bob", &coins(10_000_000, "token_3"));
         let multiple_tokens_info = mock_info("bob", 
@@ -195,9 +194,7 @@ mod tests {
         //let bigger_amount_info = mock_info("bob", &coins(100, "token_2"));
         let msg = ExecuteMsg::Swap { otc_id: count.clone() };
 
-        let res = execute(deps.as_mut(), mock_env(), same_person_info, msg.clone()).unwrap_err();
-        assert_eq!(res.to_string(), "Generic error: Can't swap with yourself");
-
+   
 
         let res = execute(deps.as_mut(), mock_env(), smaller_amount_info, msg.clone()).unwrap();
         print_response(&res);

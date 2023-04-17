@@ -281,11 +281,7 @@ pub fn try_create_otc(
 
 
     if !config.active {
-        return Err(ContractError::Std(
-            StdError::GenericErr { 
-                msg: "The factory has been stopped. No new otc can be created".to_string() 
-            }
-        ));
+        return Err(ContractError::Stopped {});
     }
 
     let expires = expires.unwrap_or_default();
@@ -308,6 +304,10 @@ pub fn try_create_otc(
     };
 
 
+    if ask_balances.len() == 0 {
+        return Err(ContractError::NoAskTokens {});
+    }
+
     
     match sell_balance {
         Balance::Native(mut balance) => {
@@ -315,12 +315,9 @@ pub fn try_create_otc(
 
 
             if balance.0.len() != 0 {
-                return Err(ContractError::Std(
-                    StdError::GenericErr { 
-                        msg: "Cannot create an otc with mupltiple denoms".to_string() 
-                    }
-                ));
+                return Err(ContractError::TooManyGiveTokens {});
             }
+
             new_otc.sell_native = true;
             new_otc.sell_amount = coin.amount;
             new_otc.initial_sell_amount = coin.amount;
@@ -334,13 +331,18 @@ pub fn try_create_otc(
         }
     };
 
+    
 
     for ask_balance in ask_balances {
         match ask_balance {
             Balance::Native(balance) => {
 
-
                 for coin in balance.0 {
+
+                    if new_otc.sell_native && new_otc.sell_denom.clone().unwrap() == coin.denom {
+                        return Err(ContractError::SameToken {});
+                    } 
+
                     new_otc.ask_for.push(AskFor {
                         native: true,
                         amount: coin.amount,
@@ -354,6 +356,11 @@ pub fn try_create_otc(
 
 
             Balance::Cw20(token) => {
+
+                if !new_otc.sell_native && new_otc.sell_address.clone().unwrap() == token.address {
+                    return Err(ContractError::SameToken {});
+                }
+
                 new_otc.ask_for.push(AskFor {
                     native: false,
                     amount: token.amount,
@@ -410,13 +417,6 @@ pub fn try_swap(
 
     let seller = deps.api.addr_humanize(&otc_info.seller)?;
 
-    if &seller == payer {
-        return Err(ContractError::Std(
-            StdError::GenericErr { 
-                msg: "Can't swap with yourself".to_string() 
-            }
-        ));
-    }
 
     let expires = otc_info.expires;
     if expires.is_expired(&env.block) {

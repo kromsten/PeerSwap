@@ -4,3 +4,5 @@ pub mod msg;
 pub mod state;
 pub mod utils;
 pub mod tests;
+pub mod multitest;
+
