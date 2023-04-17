@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128, Addr, WasmMsg, from_binary, BankMsg, CosmosMsg, Coin, Order, Decimal,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Addr, WasmMsg, from_binary, BankMsg, CosmosMsg, Coin, Order, Decimal,
 };
 use cw2::set_contract_version;
 
@@ -209,7 +209,7 @@ pub fn try_cancel_otc(
         .add_attributes(vec![
             ("otc_id", otc_id.to_string()),
             ("amount", otc.sell_amount.to_string()),
-            ("currency", if otc.sell_native { otc.sell_denom.unwrap() } else { String::from("cw20:") + &otc.sell_address.unwrap().to_string() }),
+            ("token", if otc.sell_native { otc.sell_denom.unwrap() } else { String::from("cw20:") + &otc.sell_address.unwrap().to_string() }),
         ])
     )
 }
@@ -337,6 +337,10 @@ pub fn try_create_otc(
         match ask_balance {
             Balance::Native(balance) => {
 
+                if balance.0.len() == 0 {
+                    return Err(ContractError::NoAskTokens {});
+                }
+
                 for coin in balance.0 {
 
                     if new_otc.sell_native && new_otc.sell_denom.clone().unwrap() == coin.denom {
@@ -396,7 +400,7 @@ pub fn try_create_otc(
             ("otc_id", &config.index.to_string()),
             ("seller", &seller.to_string()),
             ("amount", &new_otc.sell_amount.to_string()),
-            ("currency", &new_otc.sell_denom.unwrap_or_else(|| String::from("cw20:") + &new_otc.sell_address.unwrap().to_string())),
+            ("token", &new_otc.sell_denom.unwrap_or_else(|| String::from("cw20:") + &new_otc.sell_address.unwrap().to_string())),
         ])
     )
 }
@@ -425,7 +429,7 @@ pub fn try_swap(
    
    let to_sell_amount : Uint128;
    let swapped_amount : Uint128; 
-   let swapped_currency : String;
+   let swapped_token : String;
 
     let payment_1 : CosmosMsg = if native {
 
@@ -451,7 +455,7 @@ pub fn try_swap(
         
         to_sell_amount =  otc_info.sell_amount - otc_info.sell_amount * ratio;
         swapped_amount = coin.amount.clone();
-        swapped_currency = coin.denom.clone();
+        swapped_token = coin.denom.clone();
 
 
         otc_info.ask_for = otc_info.ask_for
@@ -485,7 +489,7 @@ pub fn try_swap(
         to_sell_amount =  otc_info.sell_amount -otc_info.sell_amount * ratio;
 
         swapped_amount = casted.amount;
-        swapped_currency = casted.address.to_string();
+        swapped_token = casted.address.to_string();
 
         otc_info.ask_for = otc_info.ask_for
             .iter()
@@ -538,9 +542,9 @@ pub fn try_swap(
         .add_attributes(vec![
             ("otc_id", otc_id.to_string()),
             ("given amount", to_sell_amount.to_string()),
-            ("given_currency", if otc_info.sell_native { otc_info.sell_denom.unwrap() } else { otc_info.sell_address.unwrap().to_string() }),
+            ("given_token", if otc_info.sell_native { otc_info.sell_denom.unwrap() } else { otc_info.sell_address.unwrap().to_string() }),
             ("sent_amount", swapped_amount.to_string()),
-            ("sent_currency", swapped_currency)
+            ("sent_token", swapped_token)
         ])
     )
 }
