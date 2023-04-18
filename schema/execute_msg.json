@@ -37,6 +37,60 @@
       "additionalProperties": false
     },
     {
+      "type": "object",
+      "required": [
+        "cancel"
+      ],
+      "properties": {
+        "cancel": {
+          "type": "object",
+          "required": [
+            "otc_id"
+          ],
+          "properties": {
+            "otc_id": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "set_active"
+      ],
+      "properties": {
+        "set_active": {
+          "type": "object",
+          "required": [
+            "active"
+          ],
+          "properties": {
+            "active": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "remove_expired"
+      ],
+      "properties": {
+        "remove_expired": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "This accepts a properly-encoded ReceiveMsg from a cw20 contract",
       "type": "object",
       "required": [
