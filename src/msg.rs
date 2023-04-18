@@ -42,6 +42,12 @@ pub enum ExecuteMsg {
         otc_id: u32
     },
 
+    SetActive {
+        active: bool
+    },
+
+    RemoveExpired {},
+
     /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
     Receive(Cw20ReceiveMsg),
 }

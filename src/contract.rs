@@ -96,6 +96,17 @@ pub fn execute(
             &info.sender, 
             otc_id
         ),
+
+        ExecuteMsg::SetActive { active } => try_set_active(
+            deps, 
+            &info.sender, 
+            active
+        ),
+
+        ExecuteMsg::RemoveExpired {} => remove_expired(
+            deps, 
+            env
+        ),
         
         ExecuteMsg::Receive(msg) => {
             execute_receive(deps, env, info, msg)
@@ -147,13 +158,34 @@ pub fn execute_receive(
 }
 
 
+pub fn try_set_active(
+    deps: DepsMut,
+    sender: &Addr,
+    active: bool
+) -> Result<Response, ContractError>  {
+
+    let mut state : State = STATE.load(deps.storage)?;
+
+    if deps.api.addr_canonicalize(sender.as_str())? != state.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    state.active = active;
+
+    STATE.save(deps.storage, &state)?;
+
+    return Ok(Response::new()
+        .add_attribute("method", "set_active")
+        .add_attribute("active", active.to_string())
+    );
+}
+
 
 pub fn refund_payment(
     deps: Deps,
     env: Env,
     otc: &OTCInfo,
     seller: &Addr
-
 ) -> CosmosMsg {
     
     let payment = if otc.sell_native {
@@ -220,7 +252,6 @@ pub fn remove_expired(
     deps: DepsMut,
     env: Env
 ) -> Result<Response, ContractError> {
-
 
     let result : StdResult<Vec<_>> = OTCS
     .range(
@@ -571,7 +602,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             include_expired, 
             start_after, 
             limit 
-        } =>to_binary(&query_otcs(
+        } => to_binary(&query_otcs(
             deps, 
             env, 
             include_expired.unwrap_or_default(),

@@ -3,12 +3,11 @@ mod tests {
     use std::vec;
 
     use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api, Event};
-    use cw20::Balance;
+    use cw20::{Balance, };
     use cw_multi_test::{App, ContractWrapper, Executor};
     use cw_utils::{NativeBalance, Expiration};
 
     use crate::{contract::{*}, msg::{QueryMsg, GetOTCsResponse, ExecuteMsg, NewOTC, NewOTCResponse}, error::ContractError, state::{OTCInfo, AskFor}};
-
 
 
     fn mock_app() -> App {
@@ -39,6 +38,23 @@ mod tests {
             );
         res.unwrap()
     }
+
+    pub fn init_cw20(app: &mut App) -> Addr {
+
+        let code = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(code));
+        let res = app
+            .instantiate_contract(
+                code_id,
+                Addr::unchecked("owner"),
+                &Empty {},
+                &[],
+                "Contract",
+                None,
+            );
+        res.unwrap()
+
+    } 
 
     pub fn new_otc_with_nones(ask_balances: Vec<Balance>) -> NewOTC {
         NewOTC {
@@ -368,12 +384,14 @@ mod tests {
 
         let completed = &wasm_event.attributes[7];
 
-
         assert_eq!(given_amount.value, amount.clone().to_string());
         assert_eq!(given_token.value, token.clone());
         assert_eq!(sent_amount.value, amount2.clone().to_string());
         assert_eq!(sent_token.value, token2.clone());
-        assert_eq!(completed.value, "true")
+        assert_eq!(completed.value, "true");
+
+        let otcs = query_otcs(&app, contract_address.clone()).unwrap();
+        assert_eq!(otcs.otcs.len(), 0);
         
     }
 
