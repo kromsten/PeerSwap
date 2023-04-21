@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use std::{vec, ops::Add};
+    use std::{vec};
 
-    use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api, Event, Decimal};
-    use cw20::{Balance, };
-    use cw_multi_test::{App, ContractWrapper, Executor};
+    use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api, Event, Decimal, to_binary, Response};
+    use cw20::{Balance, Cw20Coin, Cw20ExecuteMsg, Cw20CoinVerified, };
+    use cw_multi_test::{App, ContractWrapper, Executor, AppResponse};
     use cw_utils::{NativeBalance, Expiration};
 
     use crate::{contract::{*}, msg::{QueryMsg, GetOTCsResponse, ExecuteMsg, NewOTC, NewOTCResponse}, error::ContractError, state::{OTCInfo, AskFor}};
@@ -39,17 +39,34 @@ mod tests {
         res.unwrap()
     }
 
-    pub fn init_cw20(app: &mut App) -> Addr {
+    pub fn init_cw20(
+        app: &mut App,
+        name: String,
+        symbol: String,
+        initial_balances: Vec<Cw20Coin>,
+        label: String
+    ) -> Addr {
 
-        let code = ContractWrapper::new(execute, instantiate, query);
+        let code = ContractWrapper::new(
+            cw20_base::contract::execute, 
+            cw20_base::contract::instantiate, 
+            cw20_base::contract::query);
         let code_id = app.store_code(Box::new(code));
         let res = app
             .instantiate_contract(
                 code_id,
                 Addr::unchecked("owner"),
-                &Empty {},
+                &cw20_base::msg::InstantiateMsg {
+                    name,
+                    symbol,
+                    initial_balances,
+                    decimals: 6,
+                    mint: None,
+                    marketing: None
+                    
+                },
                 &[],
-                "Contract",
+                label,
                 None,
             );
         res.unwrap()
@@ -77,6 +94,16 @@ mod tests {
         res
     }
 
+    pub fn query_wasm_balance(app: &App, address: Addr, contract_address: Addr) -> Result<cw20::BalanceResponse, cosmwasm_std::StdError> {
+        let res = app.wrap()
+            .query_wasm_smart(
+                contract_address, 
+                &cw20_base::msg::QueryMsg::Balance { 
+                    address: address.to_string() 
+                });
+        res
+    }
+
     pub fn create_new_otc_with_funds(
         app: &mut App, 
         contract_address: Addr, 
@@ -97,10 +124,59 @@ mod tests {
         from_binary(&res.data.unwrap())
     }
 
+
+    pub fn create_new_otc_with_cw20(
+        app: &mut App, 
+        contract_address: Addr, 
+        otc_data: NewOTC,
+        cw20_contract_address: Addr,
+        amount: u128
+
+    )  {
+
+        let alice = Addr::unchecked("alice");
+
+        app.execute_contract(
+            alice.clone(),
+            cw20_contract_address.clone(),
+            &Cw20ExecuteMsg::Send { 
+                contract: contract_address.to_string(), 
+                amount: Uint128::from(amount), 
+                msg: to_binary(&ExecuteMsg::Create( otc_data )).unwrap()
+            },
+            &[],
+        ).unwrap();
+
+        //from_binary(&res.data.unwrap())
+    }
+
+
     pub fn native_wrapper(amount: u128, denom: String) -> Vec<cw20::Balance> {
         vec![cw20::Balance::Native( NativeBalance( vec![ coin(amount, denom) ] ) )]
     }
 
+    pub fn cw20_wrapper(amount: u128, address: Addr) -> Vec<cw20::Balance> {
+        vec![cw20::Balance::Cw20( Cw20CoinVerified { 
+            address, 
+            amount: Uint128::from(amount) 
+        })]
+    }
+
+
+    
+    fn print_response(res: &AppResponse) {
+  
+        println!("Events:");
+        for event in res.events.iter() {
+            println!("{:?}", event);
+        }
+        println!("");
+
+        println!("Data:");
+        println!("{:?}", res.data);
+
+    }
+    
 
     #[test]
     fn init_contract() {
@@ -414,6 +490,124 @@ mod tests {
 
         let balance = query_native_balance(&app, owner, token.clone()).unwrap();
         assert_eq!(balance.amount, taker_fee);
+
+    }
+
+
+
+    #[test]
+    fn create_wasm_swap_wasm_full()  {
+
+        let mut app = mock_app();
+        let contract_address = init_main(&mut app);
+
+        let alice = Addr::unchecked("alice");
+        let bob = Addr::unchecked("bob");
+
+        let amount : u128 = 10_000_000;
+        let amount2 : u128 = 5_000_000;
+
+
+        let token = init_cw20(
+            &mut app,
+            String::from("token1"), 
+            String::from("TKN"), 
+            vec![Cw20Coin {
+                address: alice.clone().to_string(),
+                amount: Uint128::from(amount),
+            }],
+            String::from("Contract 1"),
+        );
+
+
+        let token2 = init_cw20(
+            &mut app,
+            String::from("token2"), 
+            String::from("TKM"), 
+            vec![Cw20Coin {
+                address: bob.clone().to_string(),
+                amount: Uint128::from(amount2),
+            }],
+            String::from("Contract 2"),
+        );
+
+
+        create_new_otc_with_cw20(
+            &mut app, 
+            contract_address.clone(),
+            new_otc_with_nones(
+                cw20_wrapper(
+                    amount2.clone(), 
+                    token2.clone()
+                )
+            ),
+            token.clone(), 
+            amount.clone()
+        );
+        
+
+    
+        
+        let otcs = query_otcs(&app, contract_address.clone()).unwrap();
+        assert_eq!(otcs.otcs.len(), 1);
+
+
+        let (id, _) = otcs.otcs[0].clone();
+
+
+        let res = app.execute_contract(
+            bob.clone(), 
+            token2.clone(), 
+            &Cw20ExecuteMsg::Send { 
+                contract: contract_address.to_string(), 
+                amount: amount2.clone().into(),
+                msg: to_binary(&ExecuteMsg::Swap { otc_id: id, }).unwrap()
+            },
+            &vec![]
+        ).unwrap();
+
+        print_response(&res);
+
+        let wasm_event = res.events[3].clone();
+
+        let given_amount = &wasm_event.attributes[3];
+        let given_token = &wasm_event.attributes[4];
+
+        let sent_amount = &wasm_event.attributes[5];
+        let sent_token = &wasm_event.attributes[6];
+
+        let completed = &wasm_event.attributes[7];
+
+        assert_eq!(given_amount.value, amount.clone().to_string());
+        assert_eq!(given_token.value, token.clone());
+        assert_eq!(sent_amount.value, amount2.clone().to_string());
+        assert_eq!(sent_token.value, token2.clone());
+        assert_eq!(completed.value, "true");
+
+        let otcs = query_otcs(&app, contract_address.clone()).unwrap();
+        assert_eq!(otcs.otcs.len(), 0);
+
+        let owner = Addr::unchecked("owner");
+        let maker_fee_rate = Decimal::from_ratio(2 as u8, 100 as u8);
+        let taker_fee_rate = Decimal::from_ratio(1 as u8, 100 as u8);
+
+        
+        let maker_fee = Uint128::from(amount2) * maker_fee_rate;
+
+        let res = query_wasm_balance(&app, alice.clone(), token2.clone()).unwrap();
+        assert_eq!(res.balance, Uint128::from(amount2) - maker_fee);
+
+        let res = query_wasm_balance(&app, owner.clone(), token2.clone()).unwrap();
+        assert_eq!(res.balance, maker_fee);
+
+        let taker_fee = Uint128::from(amount) * taker_fee_rate;
+        
+        let res = query_wasm_balance(&app, bob.clone(), token.clone()).unwrap();
+        assert_eq!(res.balance, Uint128::from(amount) - taker_fee);
+
+        let res = query_wasm_balance(&app, owner, token.clone()).unwrap();
+        assert_eq!(res.balance, taker_fee);
+     
 
     }
 

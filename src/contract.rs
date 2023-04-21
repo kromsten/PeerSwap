@@ -412,14 +412,14 @@ pub fn try_create_otc(
  
 
     while OTCS.has(deps.storage, config.index) {
-        // okay for ~4 billion
-        config.index += 1;    
+        // rotate around ~4 billion
+        config.index = config.index + 1 % u32::MAX;    
     }
 
     OTCS.save(deps.storage, config.index, &new_otc)?;
     STATE.save(deps.storage, &config)?; 
    
-
+    
     let data = NewOTCResponse {
         id: config.index,
         otc: new_otc.clone()
