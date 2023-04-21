@@ -326,7 +326,7 @@ mod tests {
 
 
     fn instantiate_contract(deps: DepsMut) -> Response {
-        let msg = InstantiateMsg {};
+        let msg = InstantiateMsg { taker_fee: Some(2), maker_fee: Some(2)};
         let info = mock_info("admin", &[]);
         instantiate(deps, mock_env(), info, msg).unwrap()
     } 

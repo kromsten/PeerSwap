@@ -11,7 +11,7 @@ use cw_utils::Expiration;
 
 use crate::error::ContractError;
 use crate::state::{State, STATE, OTCS, OTCInfo, UserInfo, AskFor};
-use crate::msg::{InstantiateMsg, QueryMsg, ExecuteMsg, ReceiveMsg, GetOTCsResponse, NewOTCResponse};
+use crate::msg::{InstantiateMsg, QueryMsg, ExecuteMsg, ReceiveMsg, GetOTCsResponse, NewOTCResponse, GetConfigResponse};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:otc";
@@ -40,7 +40,7 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -48,7 +48,9 @@ pub fn instantiate(
     let state = State { 
         active: true,
         index: 0,
-        admin: deps.api.addr_canonicalize(info.sender.as_str())?
+        admin: deps.api.addr_canonicalize(info.sender.as_str())?,
+        taker_fee: msg.taker_fee.unwrap_or(2),
+        maker_fee: msg.maker_fee.unwrap_or(1),
     };
 
     STATE.save(deps.storage, &state)?;
@@ -446,7 +448,8 @@ pub fn try_swap(
     balance: Balance,
     native: bool,
     ) -> Result<Response, ContractError> {
-    
+
+    let config = STATE.load(deps.storage)?;
     let mut otc_info = OTCS.load(deps.storage, otc_id)?;
 
 
@@ -462,7 +465,11 @@ pub fn try_swap(
    let swapped_amount : Uint128; 
    let swapped_token : String;
 
-    let payment_1 : CosmosMsg = if native {
+   let mut payments : Vec<CosmosMsg> = Vec::with_capacity(4);
+
+   let admin = deps.api.addr_humanize(&config.admin)?.to_string();
+
+   if native {
 
         let mut casted =  cast!(balance, Balance::Native);
 
@@ -499,7 +506,19 @@ pub fn try_swap(
             )
             .collect();
 
-        CosmosMsg::Bank(BankMsg::Send { to_address: seller.into_string(), amount: vec!(coin) })
+        let fee = coin.amount * Decimal::from_ratio(config.taker_fee, 100 as u8);
+
+        payments.push(
+            CosmosMsg::Bank(BankMsg::Send { 
+                to_address: seller.into_string(), 
+                amount: vec!(Coin { denom: coin.denom.clone(), amount: coin.amount - fee }) })
+        );
+
+        payments.push(
+            CosmosMsg::Bank(BankMsg::Send { 
+                to_address: admin.clone(), 
+                amount: vec!(Coin { denom: coin.denom, amount: fee }) })
+        )
         
 
     } else {
@@ -510,7 +529,6 @@ pub fn try_swap(
             .find(|ask| matches!(ask.native, false) && ask.address.as_ref() == Some(&casted.address))
             .and_then(|ask| Some(ask))
             .ok_or(ContractError::WrongDenom {})?;
-
 
 
 
@@ -534,31 +552,81 @@ pub fn try_swap(
             )
             .collect();
 
+        let fee = casted.amount * Decimal::from_ratio(config.taker_fee, 100 as u8);
 
-        CosmosMsg::Wasm(WasmMsg::Execute { 
-            contract_addr: casted.address.to_string(), 
-            msg: to_binary(&Cw20ExecuteMsg::Transfer { recipient: seller.to_string(), amount: casted.amount })?, 
-            funds: vec!()
-        })
+        payments.push(
+            CosmosMsg::Wasm(WasmMsg::Execute { 
+                contract_addr: casted.address.to_string(), 
+                msg: to_binary(&Cw20ExecuteMsg::Transfer { 
+                    recipient: seller.to_string(), 
+                    amount: casted.amount - fee 
+                })?, 
+                funds: vec!()
+            })
+        );
+
+        payments.push(
+            CosmosMsg::Wasm(WasmMsg::Execute { 
+                contract_addr: casted.address.to_string(), 
+                msg: to_binary(&Cw20ExecuteMsg::Transfer { 
+                    recipient: admin.clone(),
+                    amount: fee 
+                })?, 
+                funds: vec!()
+            })
+        )
         
     };
 
 
+    let fee = to_sell_amount * Decimal::from_ratio(config.maker_fee, 100 as u8);
 
-    let payment_2 : CosmosMsg = if otc_info.sell_native {
-        CosmosMsg::Bank(BankMsg::Send { 
-            to_address: payer.clone().into_string(), 
-            amount: vec!(Coin { denom: otc_info.sell_denom.clone().unwrap(), amount: to_sell_amount }) 
-        })
+    if otc_info.sell_native {
+
+        payments.push(
+            CosmosMsg::Bank(BankMsg::Send { 
+                to_address: payer.clone().into_string(), 
+                amount: vec!(Coin { 
+                    denom: otc_info.sell_denom.clone().unwrap(), 
+                    amount: to_sell_amount - fee
+                }) 
+            })
+        );
+
+        payments.push(
+            CosmosMsg::Bank(BankMsg::Send { 
+                to_address: admin, 
+                amount: vec!(Coin { 
+                    denom: otc_info.sell_denom.clone().unwrap(), 
+                    amount: fee
+                }) 
+            })
+        )
+
     } else {
-        CosmosMsg::Wasm(WasmMsg::Execute { 
-            contract_addr: otc_info.sell_address.clone().unwrap().to_string(), 
-            msg: to_binary(&Cw20ExecuteMsg::Transfer { 
-                recipient: payer.to_string(), 
-                amount: to_sell_amount 
-            })?, 
-            funds: vec!()
-        })
+
+
+        payments.push(
+            CosmosMsg::Wasm(WasmMsg::Execute { 
+                contract_addr: otc_info.sell_address.clone().unwrap().to_string(), 
+                msg: to_binary(&Cw20ExecuteMsg::Transfer { 
+                    recipient: payer.to_string(), 
+                    amount: to_sell_amount - fee
+                })?, 
+                funds: vec!()
+            })
+        );
+
+        payments.push(
+            CosmosMsg::Wasm(WasmMsg::Execute { 
+                contract_addr: otc_info.sell_address.clone().unwrap().to_string(), 
+                msg: to_binary(&Cw20ExecuteMsg::Transfer { 
+                    recipient: admin, 
+                    amount: fee 
+                })?, 
+                funds: vec!()
+            })
+        )
     };  
 
 
@@ -585,10 +653,7 @@ pub fn try_swap(
 
 
     Ok(Response::new()
-        .add_messages(vec!(
-            payment_1,
-            payment_2
-        ))
+        .add_messages(payments)
         .add_attributes(attributes)
     )
 }
@@ -608,7 +673,9 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             include_expired.unwrap_or_default(),
             start_after,
             limit
-        )?)
+        )?),
+
+        QueryMsg::Config {} => to_binary(&query_config(deps)?),
     }
 }
 
@@ -650,5 +717,14 @@ fn query_otcs(
 }
 
 
+fn query_config(deps: Deps) -> StdResult<GetConfigResponse> {
+    let config = STATE.load(deps.storage)?;
+    Ok(GetConfigResponse {
+        active: config.active,
+        maker_fee: config.maker_fee,
+        taker_fee: config.taker_fee,
+        admin: deps.api.addr_humanize(&config.admin)?.to_string(),
+    })
+}
 
 

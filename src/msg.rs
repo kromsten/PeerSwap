@@ -9,6 +9,8 @@ use crate::state::{UserInfo, OTCInfo};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
+    pub taker_fee: Option<u8>, // 2nd decimal, e.g. 5 = 0.05%
+    pub maker_fee: Option<u8>,
 }
 
 
@@ -23,7 +25,8 @@ pub struct NewOTC {
     pub user_info: Option<UserInfo>,
 
     // optional description
-    pub description: Option<String>
+    pub description: Option<String>,
+
 }
 
 
@@ -73,6 +76,8 @@ pub enum QueryMsg {
         start_after: Option<u32>,
         limit: Option<u32>
     },
+
+    Config {},
 }
 
 
@@ -82,6 +87,18 @@ pub enum QueryMsg {
 pub struct GetOTCsResponse {
     pub otcs: Vec<(u32, OTCInfo)>
 }
+
+// We define a custom struct for each query response
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct GetConfigResponse {
+    pub taker_fee: u8,
+    pub maker_fee: u8,
+    pub active: bool,
+    pub admin: String,
+}
+
+
+
 
 // We define a custom struct for each query response
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

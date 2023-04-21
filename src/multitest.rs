@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use std::vec;
+    use std::{vec, ops::Add};
 
-    use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api, Event};
+    use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api, Event, Decimal};
     use cw20::{Balance, };
     use cw_multi_test::{App, ContractWrapper, Executor};
     use cw_utils::{NativeBalance, Expiration};
@@ -139,7 +139,7 @@ mod tests {
         
         let amount : u128 = 10_000_000;
         let to_ask : u128 = 5_000_000;
-    
+
 
         mint_native(&mut app, alice.clone().to_string(), token.clone(), amount.clone());
 
@@ -392,7 +392,29 @@ mod tests {
 
         let otcs = query_otcs(&app, contract_address.clone()).unwrap();
         assert_eq!(otcs.otcs.len(), 0);
+
+        let owner = Addr::unchecked("owner");
+        let maker_fee_rate = Decimal::from_ratio(2 as u8, 100 as u8);
+        let taker_fee_rate = Decimal::from_ratio(1 as u8, 100 as u8);
+
+
+        let maker_fee = Uint128::from(amount2) * maker_fee_rate;
         
+        let balance = query_native_balance(&app, alice, token2.clone()).unwrap();
+        assert_eq!(balance.amount, Uint128::from(amount2) - maker_fee);
+
+        let balance = query_native_balance(&app, owner.clone(), token2.clone()).unwrap();
+        assert_eq!(balance.amount, maker_fee);
+
+
+        let taker_fee = Uint128::from(amount) * taker_fee_rate;
+
+        let balance = query_native_balance(&app, bob, token.clone()).unwrap();
+        assert_eq!(balance.amount, Uint128::from(amount) - taker_fee);
+
+        let balance = query_native_balance(&app, owner, token.clone()).unwrap();
+        assert_eq!(balance.amount, taker_fee);
+
     }
 
 

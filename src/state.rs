@@ -11,6 +11,8 @@ pub struct State {
     pub admin: CanonicalAddr,
     pub index: u32,
     pub active: bool,
+    pub taker_fee: u8, // 2nd decimal, e.g. 5 = 0.05%
+    pub maker_fee: u8, // 2nd decimal 
 }
 
 
