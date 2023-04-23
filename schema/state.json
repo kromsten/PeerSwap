@@ -5,7 +5,9 @@
   "required": [
     "active",
     "admin",
-    "index"
+    "index",
+    "maker_fee",
+    "taker_fee"
   ],
   "properties": {
     "active": {
@@ -17,6 +19,16 @@
     "index": {
       "type": "integer",
       "format": "uint32",
+      "minimum": 0.0
+    },
+    "maker_fee": {
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0.0
+    },
+    "taker_fee": {
+      "type": "integer",
+      "format": "uint8",
       "minimum": 0.0
     }
   },
