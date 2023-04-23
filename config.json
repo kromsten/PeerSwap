@@ -1,5 +1,5 @@
 {
-  "name": "factory",
+  "name": "peer_swap",
   "developer": {
     "archwayd": {
       "docker": false
@@ -12,7 +12,15 @@
       "query": "archwayd query wasm",
       "tx": "archwayd tx wasm execute"
     },
-    "deployments": []
+    "deployments": [
+      {
+        "project": "peer_swap",
+        "type": "store",
+        "chainId": "constantine-2",
+        "codeId": 634,
+        "txhash": "FB08CB23164F0265E94E4FD4156B673BA9FE64F4C16B60A2A8624FB2D0D0B295"
+      }
+    ]
   },
   "network": {
     "name": "constantine",
