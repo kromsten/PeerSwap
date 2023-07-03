@@ -1,90 +1,31 @@
-# Archway Network Starter Pack
+# PeerSwap
 
-This is a template to build smart contracts in Rust to run inside a
-[Cosmos SDK](https://github.com/cosmos/cosmos-sdk) module on all chains that enable it.
-To understand the framework better, please read the overview in the
-[archway repo](https://github.com/archway-network/archway/blob/main/README.md),
-and dig into the [archway docs](https://docs.archway.io).
+Salutations from PeerSwap!
+Everyone can conduct OTC transactions, trade tokens, engage in arbitrage, and even raise money on PeerSwap! Try out now and start trading!
 
-The below instructions assume you understand the theory and just want to get coding.
+The repository contains for currently deployed contract of PeerSwap contract.
+### Roadmap
+1. Upgrade the essential platform
+2. Add assistance for NFT transactions and trading, IBC enabled
+3. Support FIAT on-ramp and off-ramp for OTC Deal
+4. Add "Bet on anything" feature
+built with the Archway Network.
 
-## Creating a new project from a template
+## Usage Examplers:
 
-Assuming you have a recent version of rust and cargo (v1.51.0+) installed
-(via [rustup](https://rustup.rs/)),
-then the following should get you a new repo to start a contract:
-
-Install [cargo-generate](https://github.com/ashleygwilliams/cargo-generate) and cargo-run-script.
-If you didn't install them already, run the following commands:
-
-```sh
-cargo install cargo-generate --features vendored-openssl
-cargo install cargo-run-script
+Query all otcs:
+```
+archwayd q wasm contract-state smart $OTC_ADDRESS '{ "get_otcs" : {} }
 ```
 
-Now, use it to create your new contract.
-Go to the folder in which you want to place it and run:
-
-```sh
-cargo generate --git archway-network/archway-templates.git --name PROJECT_NAME default
+Create an otc offer with native/ibc token:
+```
+archwayd tx wasm execute $OTC_ADDRESS '{ "create" : { "ask_balances": [{ "cw20": { "address": $CW20_ADDRESS, "amount": "1000000" } } ]  } }' --from wallet --amount 1000000uconst
+```
+Create an otc offer with cw20 token:
+```
+# $BASE_64_CREATE_MSG =  <- to base64 -- { "create" : { "ask_balances": [{ "native": [{ "denom": "uconst", "amount": "1000000" }] }]  } 
+archwayd tx wasm execute $CW20_ADDRESS '{ "send": { "contract": $OTC_ADDRESS, "amount": "1000000", msg: $BASE_64_CREATE_MSG   } }'   }' --from wallet
 ```
 
-You will now have a new folder called `PROJECT_NAME` (I hope you changed that to something else)
-containing a simple working contract and build system that you can customize.
-
-## Create a Repo
-
-After generating, you have a initialized local git repo, but no commits, and no remote.
-Go to a server (eg. github) and create a new upstream repo (called `YOUR-GIT-URL` below).
-Then run the following:
-
-```sh
-# this is needed to create a valid Cargo.lock file (see below)
-cargo check
-git branch -M main
-git add .
-git commit -m 'Initial Commit'
-git remote add origin YOUR-GIT-URL
-git push -u origin main
-```
-
-## CI Support
-
-We have template configurations for both [GitHub Actions](.github/workflows/Basic.yml)
-and [Circle CI](.circleci/config.yml) in the generated project, so you can
-get up and running with CI right away.
-
-One note is that the CI runs all `cargo` commands
-with `--locked` to ensure it uses the exact same versions as you have locally. This also means
-you must have an up-to-date `Cargo.lock` file, which is not auto-generated.
-The first time you set up the project (or after adding any dep), you should ensure the
-`Cargo.lock` file is updated, so the CI will test properly. This can be done simply by
-running `cargo check` or `cargo unit-test`.
-
-## Using your project
-
-Once you have your custom repo, you should check out [Developing](./Developing.md) to explain
-more on how to run tests and develop code. Or go through the
-[online tutorial](https://docs.archway.io/docs/create/guides/my-first-dapp/start) to get a better feel
-of how to develop.
-
-[Publishing](./Publishing.md) contains useful information on how to publish your contract
-to the world, once you are ready to deploy it on a running blockchain. And
-[Importing](./Importing.md) contains information about pulling in other contracts or crates
-that have been published.
-
-Please replace this README file with information about your specific project. You can keep
-the `Developing.md` and `Publishing.md` files as useful referenced, but please set some
-proper description in the README.
-
-## Gitpod integration
-
-[Gitpod](https://www.gitpod.io/) container-based development platform will be enabled on your project by default.
-
-Workspace contains:
-
-- **rust**: for builds
-- [wasmd](https://github.com/CosmWasm/wasmd): for local node setup and client
-- **jq**: shell JSON manipulation tool
-
-Follow [Gitpod Getting Started](https://www.gitpod.io/docs/getting-started) and launch your workspace.
+Swap messages follow the same principle
