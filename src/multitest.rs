@@ -2,7 +2,11 @@
 mod tests {
     use std::{vec};
 
-    use cosmwasm_std::{Addr, Empty, coin, Coin, Uint128, from_binary, testing::mock_dependencies, Api, Event, Decimal, to_binary, Response};
+    use cosmwasm_std::{
+        Addr, Empty, coin, Coin, Uint128, from_binary, 
+        Api, Decimal, to_binary,
+        testing::mock_dependencies, 
+    };
     use cw20::{Balance, Cw20Coin, Cw20ExecuteMsg, Cw20CoinVerified, };
     use cw_multi_test::{App, ContractWrapper, Executor, AppResponse};
     use cw_utils::{NativeBalance, Expiration};
@@ -131,7 +135,6 @@ mod tests {
         otc_data: NewOTC,
         cw20_contract_address: Addr,
         amount: u128
-
     )  {
 
         let alice = Addr::unchecked("alice");
@@ -147,7 +150,7 @@ mod tests {
             &[],
         ).unwrap();
 
-        //from_binary(&res.data.unwrap())
+        // from_binary(&res.data.unwrap())
     }
 
 
@@ -452,26 +455,25 @@ mod tests {
 
         let wasm_event = res.events[1].clone();
 
+        assert_eq!(wasm_event.ty, "wasm-peerswap_swap_completed");
+
         let given_amount = &wasm_event.attributes[3];
         let given_token = &wasm_event.attributes[4];
 
         let sent_amount = &wasm_event.attributes[5];
         let sent_token = &wasm_event.attributes[6];
 
-        let completed = &wasm_event.attributes[7];
-
         assert_eq!(given_amount.value, amount.clone().to_string());
         assert_eq!(given_token.value, token.clone());
         assert_eq!(sent_amount.value, amount2.clone().to_string());
         assert_eq!(sent_token.value, token2.clone());
-        assert_eq!(completed.value, "true");
 
         let otcs = query_otcs(&app, contract_address.clone()).unwrap();
         assert_eq!(otcs.otcs.len(), 0);
 
         let owner = Addr::unchecked("owner");
-        let maker_fee_rate = Decimal::from_ratio(2 as u8, 100 as u8);
-        let taker_fee_rate = Decimal::from_ratio(1 as u8, 100 as u8);
+        let maker_fee_rate = Decimal::from_ratio(2u8, 10000u16);
+        let taker_fee_rate = Decimal::from_ratio(1u8, 10000u16);
 
 
         let maker_fee = Uint128::from(amount2) * maker_fee_rate;
@@ -492,6 +494,7 @@ mod tests {
         assert_eq!(balance.amount, taker_fee);
 
     }
+
 
 
 
@@ -546,7 +549,6 @@ mod tests {
         );
         
 
-    
         
         let otcs = query_otcs(&app, contract_address.clone()).unwrap();
         assert_eq!(otcs.otcs.len(), 1);
@@ -570,26 +572,25 @@ mod tests {
 
         let wasm_event = res.events[3].clone();
 
+        assert_eq!(wasm_event.ty, "wasm-peerswap_swap_completed");
+
         let given_amount = &wasm_event.attributes[3];
         let given_token = &wasm_event.attributes[4];
 
         let sent_amount = &wasm_event.attributes[5];
         let sent_token = &wasm_event.attributes[6];
 
-        let completed = &wasm_event.attributes[7];
-
         assert_eq!(given_amount.value, amount.clone().to_string());
         assert_eq!(given_token.value, token.clone());
         assert_eq!(sent_amount.value, amount2.clone().to_string());
         assert_eq!(sent_token.value, token2.clone());
-        assert_eq!(completed.value, "true");
 
         let otcs = query_otcs(&app, contract_address.clone()).unwrap();
         assert_eq!(otcs.otcs.len(), 0);
 
         let owner = Addr::unchecked("owner");
-        let maker_fee_rate = Decimal::from_ratio(2 as u8, 100 as u8);
-        let taker_fee_rate = Decimal::from_ratio(1 as u8, 100 as u8);
+        let maker_fee_rate = Decimal::from_ratio(2 as u8, 10000u16);
+        let taker_fee_rate = Decimal::from_ratio(1 as u8, 10000u16);
 
         
         let maker_fee = Uint128::from(amount2) * maker_fee_rate;

@@ -1,7 +1,6 @@
 use cw_utils::Expiration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
 use cosmwasm_std::{CanonicalAddr, Addr, Uint128};
 use cw_storage_plus::{Item, Map};
 
@@ -11,8 +10,8 @@ pub struct State {
     pub admin: CanonicalAddr,
     pub index: u32,
     pub active: bool,
-    pub taker_fee: u8, // 2nd decimal, e.g. 5 = 0.05%
-    pub maker_fee: u8, // 2nd decimal 
+    pub taker_fee: u16, // 2nd decimal, e.g. 5 = 0.05%
+    pub maker_fee: u16, // 2nd decimal 
 }
 
 
@@ -30,7 +29,6 @@ pub struct AskFor {
     pub address: Option<Addr>,
     pub native: bool,
 }
-
 
 
 

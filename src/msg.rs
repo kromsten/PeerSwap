@@ -2,15 +2,15 @@ use cw_utils::Expiration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cw20::{Balance, Cw20ReceiveMsg};
-
+use cosmwasm_std::{Addr};
 use crate::state::{UserInfo, OTCInfo};
 
 
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-    pub taker_fee: Option<u8>, // 2nd decimal, e.g. 5 = 0.05%
-    pub maker_fee: Option<u8>,
+    pub taker_fee: Option<u16>, // basis points, e.g. 5 = 0.0005%
+    pub maker_fee: Option<u16>,
 }
 
 
@@ -77,9 +77,19 @@ pub enum QueryMsg {
         limit: Option<u32>
     },
 
+    GetAddressOtcs {
+        address: Addr,
+        include_expired: Option<bool>,
+        start_after: Option<u32>,
+        limit: Option<u32>
+    },
+
+    GetOtc {
+        otc_id: u32
+    },
+
     Config {},
 }
-
 
 
 // We define a custom struct for each query response
@@ -88,16 +98,15 @@ pub struct GetOTCsResponse {
     pub otcs: Vec<(u32, OTCInfo)>
 }
 
+
 // We define a custom struct for each query response
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct GetConfigResponse {
-    pub taker_fee: u8,
-    pub maker_fee: u8,
+    pub taker_fee: u16,
+    pub maker_fee: u16,
     pub active: bool,
     pub admin: String,
 }
-
-
 
 
 // We define a custom struct for each query response

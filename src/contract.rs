@@ -1,7 +1,10 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Addr, WasmMsg, from_binary, BankMsg, CosmosMsg, Coin, Order, Decimal,
+    Deps, DepsMut, Env, Response, StdResult, Event, Attribute, Addr,
+    MessageInfo, WasmMsg, BankMsg, CosmosMsg,
+    Coin, Order, Decimal, Uint128,
+    Binary, to_binary, from_binary
 };
 use cw2::set_contract_version;
 
@@ -14,7 +17,7 @@ use crate::state::{State, STATE, OTCS, OTCInfo, UserInfo, AskFor};
 use crate::msg::{InstantiateMsg, QueryMsg, ExecuteMsg, ReceiveMsg, GetOTCsResponse, NewOTCResponse, GetConfigResponse};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:otc";
+const CONTRACT_NAME: &str = "crates.io:peerswap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const DEFAULT_LIMIT: u32 = 20;
@@ -49,8 +52,8 @@ pub fn instantiate(
         active: true,
         index: 0,
         admin: deps.api.addr_canonicalize(info.sender.as_str())?,
-        taker_fee: msg.taker_fee.unwrap_or(2),
-        maker_fee: msg.maker_fee.unwrap_or(1),
+        taker_fee: msg.taker_fee.unwrap_or(2u16),
+        maker_fee: msg.maker_fee.unwrap_or(1u16),
     };
 
     STATE.save(deps.storage, &state)?;
@@ -185,7 +188,7 @@ pub fn try_set_active(
 
 pub fn refund_payment(
     deps: Deps,
-    env: Env,
+    _env: Env,
     otc: &OTCInfo,
     seller: &Addr
 ) -> CosmosMsg {
@@ -194,7 +197,7 @@ pub fn refund_payment(
         CosmosMsg::Bank(BankMsg::Send {
             to_address: seller.clone().to_string(),
             amount: vec![Coin {
-                denom: env.contract.address.to_string(),
+                denom: otc.sell_denom.clone().unwrap().to_string(),
                 amount: otc.sell_amount.into(),
             }],
         })
@@ -239,12 +242,20 @@ pub fn try_cancel_otc(
         .add_messages(vec!(
             payment
         ))
-        .add_attribute("method", "cancel")
-        .add_attributes(vec![
-            ("otc_id", otc_id.to_string()),
-            ("amount", otc.sell_amount.to_string()),
-            ("token", if otc.sell_native { otc.sell_denom.unwrap() } else { String::from("cw20:") + &otc.sell_address.unwrap().to_string() }),
-        ])
+        .add_event(
+            Event::new("peerswap_cancel")
+            .add_attributes(vec![
+                ("otc_id", otc_id.to_string()),
+                ("amount", otc.sell_amount.to_string()),
+                ("token", if otc.sell_native { 
+                    otc.sell_denom.unwrap() 
+                } else { 
+                    String::from("cw20:") + &otc.sell_address.unwrap().to_string() 
+                }),
+                ("method", "cancel".to_string())
+            ])
+
+        )
     )
 }
 
@@ -293,7 +304,10 @@ pub fn remove_expired(
 
 
     Ok(Response::new()
-        .add_attributes(logs)
+        .add_event(
+            Event::new("peerswap_remove_expired")
+            .add_attributes(logs)
+        )
     )
 }
 
@@ -351,12 +365,21 @@ pub fn try_create_otc(
                 return Err(ContractError::TooManyGiveTokens {});
             }
 
+            if coin.amount < Uint128::from(10000u128) {
+                return Err(ContractError::TooSmall {});
+            }
+
             new_otc.sell_native = true;
             new_otc.sell_amount = coin.amount;
             new_otc.initial_sell_amount = coin.amount;
             new_otc.sell_denom = Some(coin.denom);
         },
         Balance::Cw20(token) => {
+
+            if token.amount < Uint128::from(10000u128) {
+                return Err(ContractError::TooSmall {});
+            }
+
             new_otc.sell_native = false;
             new_otc.sell_amount = token.amount;
             new_otc.initial_sell_amount = token.amount;
@@ -425,16 +448,18 @@ pub fn try_create_otc(
         otc: new_otc.clone()
     };
 
-
     Ok(Response::new()
         .set_data(to_binary(&data).unwrap())
-        .add_attributes(vec![
-            ("method", "create_new_otc"),
-            ("otc_id", &config.index.to_string()),
-            ("seller", &seller.to_string()),
-            ("amount", &new_otc.sell_amount.to_string()),
-            ("token", &new_otc.sell_denom.unwrap_or_else(|| String::from("cw20:") + &new_otc.sell_address.unwrap().to_string())),
-        ])
+        .add_event(
+            Event::new("peerswap_otc_created")
+            .add_attributes(vec![
+                ("otc_id", &config.index.to_string()),
+                ("seller", &seller.to_string()),
+                ("amount", &new_otc.sell_amount.to_string()),
+                ("token", &new_otc.sell_denom.unwrap_or_else(|| String::from("cw20:") + &new_otc.sell_address.unwrap().to_string())),
+                ("method", &"create_otc".to_string())
+            ])
+        )
     )
 }
 
@@ -449,9 +474,10 @@ pub fn try_swap(
     native: bool,
     ) -> Result<Response, ContractError> {
 
+
+
     let config = STATE.load(deps.storage)?;
     let mut otc_info = OTCS.load(deps.storage, otc_id)?;
-
 
     let seller = deps.api.addr_humanize(&otc_info.seller)?;
 
@@ -469,6 +495,7 @@ pub fn try_swap(
 
    let admin = deps.api.addr_humanize(&config.admin)?.to_string();
 
+
    if native {
 
         let mut casted =  cast!(balance, Balance::Native);
@@ -479,12 +506,16 @@ pub fn try_swap(
 
         if casted.0.len() != 0 { return Err(ContractError::TooManyDenoms{}); }
 
+        if coin.amount != otc_info.sell_amount && coin.amount < Uint128::from(10000u128) {
+            return Err(ContractError::TooSmall {});
+        }
 
         let to_pay = otc_info.ask_for
             .iter()
             .find(|ask| matches!(ask.native, true) && ask.denom.as_ref() == Some(&coin.denom))
             .and_then(|ask| Some(ask))
             .ok_or(ContractError::WrongDenom {})?;
+
 
 
         let ratio = if to_pay.amount  > coin.amount  {
@@ -506,11 +537,11 @@ pub fn try_swap(
             )
             .collect();
 
-        let fee = coin.amount * Decimal::from_ratio(config.taker_fee, 100 as u8);
+        let fee = coin.amount * Decimal::from_ratio(config.taker_fee, 10000u16);
 
         payments.push(
             CosmosMsg::Bank(BankMsg::Send { 
-                to_address: seller.into_string(), 
+                to_address: seller.clone().into_string(), 
                 amount: vec!(Coin { denom: coin.denom.clone(), amount: coin.amount - fee }) })
         );
 
@@ -530,9 +561,9 @@ pub fn try_swap(
             .and_then(|ask| Some(ask))
             .ok_or(ContractError::WrongDenom {})?;
 
-
-
+    
         let ratio = if to_pay.amount  > casted.amount  {
+            //Decimal::one()
             Decimal::from_ratio(to_pay.amount - casted.amount, to_pay.amount)
         }
         else {
@@ -540,11 +571,20 @@ pub fn try_swap(
         };
 
 
+        if casted.amount != otc_info.sell_amount && casted.amount < Uint128::from(10000u128) {
+            return Err(ContractError::TooSmall {});
+        }
+
+
         to_sell_amount =  otc_info.sell_amount - otc_info.sell_amount * ratio;
+        
         otc_info.sell_amount -= to_sell_amount;
+
+
 
         swapped_amount = casted.amount;
         swapped_token = casted.address.to_string();
+
 
         otc_info.ask_for = otc_info.ask_for
             .iter()
@@ -552,7 +592,8 @@ pub fn try_swap(
             )
             .collect();
 
-        let fee = casted.amount * Decimal::from_ratio(config.taker_fee, 100 as u8);
+        let fee = casted.amount * Decimal::from_ratio(config.taker_fee, 10000u16);
+
 
         payments.push(
             CosmosMsg::Wasm(WasmMsg::Execute { 
@@ -579,7 +620,8 @@ pub fn try_swap(
     };
 
 
-    let fee = to_sell_amount * Decimal::from_ratio(config.maker_fee, 100 as u8);
+    let fee = to_sell_amount * Decimal::from_ratio(config.maker_fee, 10000u16);
+
 
     if otc_info.sell_native {
 
@@ -616,6 +658,7 @@ pub fn try_swap(
                 funds: vec!()
             })
         );
+        
 
         payments.push(
             CosmosMsg::Wasm(WasmMsg::Execute { 
@@ -629,32 +672,61 @@ pub fn try_swap(
         )
     };  
 
+    let attributes: Vec<Attribute> = vec![
+        Attribute {
+            key: String::from("seller"),
+            value: seller.to_string()
+        },
 
-    let mut attributes: Vec<(&str, String)> = vec![
-        ("method", String::from("swap")),
-        ("otc_id", otc_id.to_string()),
-        ("given amount", to_sell_amount.to_string()),
-        ("given_token", if otc_info.sell_native { otc_info.sell_denom.clone().unwrap() } else { otc_info.sell_address.clone().unwrap().to_string() }),
-        ("sent_amount", swapped_amount.to_string()),
-        ("sent_token", swapped_token)
+        Attribute {
+            key: String::from("otc_id"),
+            value: otc_id.to_string()
+        },
+
+        Attribute {
+            key: String::from("given_amount"),
+            value: to_sell_amount.to_string()
+        },
+
+        Attribute {
+            key: String::from("given_token"),
+            value: if otc_info.sell_native { 
+                otc_info.sell_denom.clone().unwrap() 
+            } else { 
+                otc_info.sell_address.clone().unwrap().to_string() 
+            }
+        },
+
+        Attribute {
+            key: String::from("sent_amount"),
+            value: swapped_amount.to_string()
+        },
+
+        Attribute {
+            key: String::from("sent_token"),
+            value: swapped_token
+        },
+
+        Attribute {
+            key: String::from("method"),
+            value: String::from("swap")
+        }
     ];
 
-    if otc_info.sell_amount <= Uint128::zero() {
+
+
+    let event_type = if otc_info.sell_amount <= Uint128::zero() {
         OTCS.remove(deps.storage, otc_id);
-        attributes.push(
-            ("completed", String::from("true"))
-        )
+        "peerswap_swap_completed"
     } else {
         OTCS.save(deps.storage, otc_id, &otc_info)?;
-        attributes.push(
-            ("completed", String::from("false"))
-        )
-    }
+        "peerswap_swap"
+    };
 
 
     Ok(Response::new()
         .add_messages(payments)
-        .add_attributes(attributes)
+        .add_event(Event::new(event_type).add_attributes(attributes))
     )
 }
 
@@ -673,6 +745,27 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             include_expired.unwrap_or_default(),
             start_after,
             limit
+        )?),
+
+        QueryMsg::GetAddressOtcs { 
+            address,
+            include_expired, 
+            start_after, 
+            limit 
+         } => to_binary(&query_addr_otcs(
+            deps, 
+            env, 
+            address,
+            include_expired.unwrap_or_default(),
+            start_after,
+            limit
+        )?),
+
+        QueryMsg::GetOtc {
+            otc_id, 
+        } => to_binary(&query_otc(
+            deps, 
+            otc_id
         )?),
 
         QueryMsg::Config {} => to_binary(&query_config(deps)?),
@@ -704,10 +797,12 @@ fn query_otcs(
         Order::Ascending
     )
     .filter(|otc| 
-        include_expired || (
-            otc.is_ok() && 
-            !otc.as_ref().unwrap().1.expires.is_expired(&env.block) 
-        )
+        otc.is_ok() && 
+        if include_expired { 
+            true
+        } else {
+            !otc.as_ref().unwrap().1.expires.is_expired(&env.block)
+        } 
     )
     .take(limit)
     .collect();
@@ -715,6 +810,66 @@ fn query_otcs(
     //OTCS.load(deps.storage, )
     Ok(GetOTCsResponse { otcs: result? })
 }
+
+
+fn query_addr_otcs(
+    deps: Deps, 
+    env: Env, 
+    addr: Addr,
+    include_expired: bool,
+    start_after: Option<u32>,
+    limit: Option<u32>,
+) -> StdResult<GetOTCsResponse> {
+
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    
+    let start = match start_after {
+        Some(start_after) => Some(Bound::exclusive(start_after)),
+        None => None
+    };
+
+    
+    let canon = deps.api.addr_canonicalize(addr.as_str())?;
+    
+    let result : StdResult<Vec<_>> = OTCS
+    .range(
+        deps.storage, 
+        start, 
+        None, 
+        Order::Ascending
+    )
+    .filter(|otc| {
+        if otc.is_ok() {
+            let otc = &otc.as_ref().unwrap().1;
+            let mut ok = otc.seller == canon;
+            if ok {
+                if !include_expired {
+                    ok = !otc.expires.is_expired(&env.block);
+             
+                }
+            }
+            ok
+        } else {
+            false
+        }
+
+    })
+    .take(limit)
+    .collect();
+
+    Ok(GetOTCsResponse { otcs: result? })
+}
+
+
+
+fn query_otc(
+    deps: Deps, 
+    otc_id: u32
+) -> StdResult<OTCInfo> {
+    Ok(OTCS.load(deps.storage, otc_id)?)
+}
+
+
 
 
 fn query_config(deps: Deps) -> StdResult<GetConfigResponse> {

@@ -12,6 +12,9 @@ pub enum ContractError {
     #[error("Too many denoms")]
     TooManyDenoms {},
 
+    #[error("The amount is too small")]
+    TooSmall {},
+
     #[error("Can't ask and sell the same token")]
     SameToken {},
 
