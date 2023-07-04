@@ -8,7 +8,7 @@
         "integer",
         "null"
       ],
-      "format": "uint8",
+      "format": "uint16",
       "minimum": 0.0
     },
     "taker_fee": {
@@ -16,7 +16,7 @@
         "integer",
         "null"
       ],
-      "format": "uint8",
+      "format": "uint16",
       "minimum": 0.0
     }
   }

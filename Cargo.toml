@@ -1,6 +1,6 @@
 [package]
-name = "Peerswap"
-version = "0.3.2"
+name = "peerswap"
+version = "0.3.3"
 authors = ["kromsten <kromsten@pm.me>"]
 edition = "2021"
 
