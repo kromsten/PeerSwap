@@ -48,6 +48,7 @@ cw-utils = "1.0.1"
 cw2 = "1.0.1"
 cw20 = "1.0.1"
 schemars = "0.8"
+semver = "1.0.17"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 thiserror = "1.0"
 

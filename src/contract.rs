@@ -2,15 +2,17 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     Deps, DepsMut, Env, Response, StdResult, Event, Attribute, Addr,
-    MessageInfo, WasmMsg, BankMsg, CosmosMsg,
+    MessageInfo, WasmMsg, BankMsg, CosmosMsg, Empty,
     Coin, Order, Decimal, Uint128,
     Binary, to_binary, from_binary
 };
-use cw2::set_contract_version;
+use cw2::{get_contract_version, set_contract_version};
 
 use cw20::{Balance, Cw20ReceiveMsg, Cw20CoinVerified, Cw20ExecuteMsg};
 use cw_storage_plus::Bound;
 use cw_utils::Expiration;
+
+use semver::Version;
 
 use crate::error::ContractError;
 use crate::state::{State, STATE, OTCS, OTCInfo, UserInfo, AskFor};
@@ -48,7 +50,7 @@ pub fn instantiate(
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let state = State { 
+    let state = State {     
         active: true,
         index: 0,
         admin: deps.api.addr_canonicalize(info.sender.as_str())?,
@@ -118,6 +120,24 @@ pub fn execute(
         }
     }
 }
+
+// Migrate contract if version is lower than current version
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> Result<Response, ContractError> {
+    let version: Version = CONTRACT_VERSION.parse()?;
+    let storage_version: Version = get_contract_version(deps.storage)?.version.parse()?;
+
+    if storage_version < version {
+        set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+        // If state structure changed in any contract version in the way migration is needed, it
+        // should occur here
+    }
+
+    Ok(Response::new())
+}
+
+
 
 
 pub fn execute_receive(
